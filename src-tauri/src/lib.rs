@@ -1720,17 +1720,32 @@ fn initial_dir(state: tauri::State<'_, db::Db>) -> String {
     if let Ok(Some(saved)) = db::get_app_state(&conn, "cwd") {
         let saved = saved.trim().to_string();
         if !saved.is_empty() && Path::new(&saved).is_dir() {
+            // Android：旧版可能把目录存在了应用私有空间（出不去也到不了手机存储），
+            // 只恢复手机存储里的路径，否则回到存储根目录
+            #[cfg(target_os = "android")]
+            if !saved.starts_with("/storage/emulated/") {
+                return android_default_start_dir();
+            }
             return saved.replace('\\', "/");
         }
     }
     #[cfg(target_os = "android")]
-    {
-        return norm_path(&android_home());
-    }
+    return android_default_start_dir();
     #[cfg(not(target_os = "android"))]
     dirs::home_dir()
         .map(|p| norm_path(&p))
         .unwrap_or_else(|| "/".into())
+}
+
+/// Android 默认起始目录：手机存储根目录（书库/书都放在这里）
+#[cfg(target_os = "android")]
+fn android_default_start_dir() -> String {
+    let pub_root = PathBuf::from("/storage/emulated/0");
+    if pub_root.is_dir() {
+        norm_path(&pub_root)
+    } else {
+        norm_path(&android_home())
+    }
 }
 
 #[tauri::command]
@@ -1852,9 +1867,6 @@ fn work_dir() -> PathBuf {
     migrate_old_cache(&dir);
     let _ = fs::create_dir_all(dir.join("epub"));
     let _ = fs::create_dir_all(dir.join("thumbs"));
-    // Android：预创建书籍导入目录（用户通过 USB/文件管理器把书放进这里）
-    #[cfg(target_os = "android")]
-    let _ = fs::create_dir_all(dir.join("Books"));
     if let Ok(mut g) = WORK_DIR.lock() {
         *g = Some(dir.clone());
     }

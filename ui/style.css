@@ -14,6 +14,9 @@
   --shadow-1: 0 1px 4px var(--shadow); --shadow-2: 0 6px 20px var(--shadow); --shadow-3: 0 8px 30px var(--shadow);
   --ease: cubic-bezier(.2,.8,.2,1);
   --reader-bg: #ffffff; --reader-page: #ffffff;
+  /* Android/iOS 系统栏安全区（edge-to-edge 时 WebView 延伸到系统栏下方） */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -60,6 +63,8 @@ html, body, #app { height: 100%; }
 body {
   font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
   background: var(--bg); color: var(--text); overflow: hidden;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
 }
 #app { display: flex; }
 #sidebar {
@@ -113,7 +118,7 @@ body {
 }
 /* 图标网格里生成缩略图时的悬浮进度条 */
 .lib-thumb-progress {
-  position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+  position: fixed; top: calc(14px + var(--safe-top)); left: 50%; transform: translateX(-50%);
   z-index: 30; display: flex; align-items: center; gap: 10px;
   background: var(--navbg); border: 1px solid var(--border); border-radius: 8px;
   padding: 8px 14px; font-size: 12px; color: var(--item);
@@ -230,7 +235,7 @@ body {
 }
 /* 悬浮导航条：默认藏在屏幕下方，鼠标移到下部时滑出 */
 #page-nav {
-  position: fixed; left: 0; right: 0; bottom: 0; height: 58px; z-index: 6;
+  position: fixed; left: 0; right: 0; bottom: var(--safe-bottom); height: 58px; z-index: 6;
   background: var(--navbg); border-top: 1px solid var(--border);
   display: flex; gap: 4px; overflow-x: auto; padding: 6px 10px;
   align-items: center;
@@ -252,8 +257,8 @@ body {
 .nav-cell.now { outline: 2px solid var(--accent); }
 #page-nav::-webkit-scrollbar { height: 6px; }
 /* 导航条浮出时，底部状态标签上移避开（不压缩阅读区） */
-body.nav-on #statusbar, body.nav-on #reading { bottom: 68px; }
-body.nav-on #progress { bottom: 68px; }
+body.nav-on #statusbar, body.nav-on #reading { bottom: calc(68px + var(--safe-bottom)); }
+body.nav-on #progress { bottom: calc(68px + var(--safe-bottom)); }
 #version, #progress {
   position: fixed; right: 14px; font-size: 12px;
   color: var(--muted); background: var(--pill); padding: 4px 10px;
@@ -261,7 +266,7 @@ body.nav-on #progress { bottom: 68px; }
   box-shadow: var(--shadow-1);
 }
 #statusbar {
-  position: fixed; left: 14px; bottom: 12px; z-index: 16;
+  position: fixed; left: 14px; bottom: calc(12px + var(--safe-bottom)); z-index: 16;
   display: flex; align-items: center; gap: 10px;
   transition: opacity .25s var(--ease);
 }
@@ -284,7 +289,7 @@ body.nav-on #progress { bottom: 68px; }
   pointer-events: none;
 }
 #page-mode {
-  position: fixed; top: 10px; right: 10px; z-index: 7;
+  position: fixed; top: calc(10px + var(--safe-top)); right: 10px; z-index: 7;
   display: flex; border: 1px solid var(--glass-border); border-radius: var(--radius-l); overflow: hidden;
   background: var(--glass);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
@@ -315,6 +320,7 @@ body.nav-on #progress { bottom: 68px; }
   background: var(--dialog); border-right: 1px solid var(--border);
   transform: translateX(-105%); transition: transform .25s var(--ease);
   display: flex; flex-direction: column; box-shadow: var(--shadow-2);
+  padding-top: var(--safe-top);
 }
 #toc-panel.show { transform: translateX(0); }
 #toc-panel-head {
@@ -334,7 +340,7 @@ body.nav-on #progress { bottom: 68px; }
 #strip.flip .page.epub iframe { width: 100%; height: 100%; }
 /* 阅读悬浮控件（背景/返回）：独立小按钮，顶部感应区滑入 */
 #theme-btn, #reader-back {
-  position: fixed; top: 10px; z-index: 7;
+  position: fixed; top: calc(10px + var(--safe-top)); z-index: 7;
   display: flex; align-items: center; justify-content: center;
   border: 1px solid var(--glass-border); border-radius: var(--radius-l);
   background: var(--glass);
@@ -350,21 +356,21 @@ body.nav-on #progress { bottom: 68px; }
 #theme-btn svg, #reader-back svg { display: block; }
 #theme-btn:hover, #reader-back:hover { color: var(--text); }
 #reading {
-  position: fixed; left: 14px; bottom: 12px; font-size: 12px;
+  position: fixed; left: 14px; bottom: calc(12px + var(--safe-bottom)); font-size: 12px;
   color: var(--muted); background: var(--pill); padding: 4px 10px;
   border-radius: var(--radius-l); pointer-events: none; display: none;
   max-width: 42vw; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap;
   opacity: .8; transition: opacity .25s var(--ease);
 }
-#progress { bottom: 12px; opacity: .8; transition: opacity .25s var(--ease); }
+#progress { bottom: calc(12px + var(--safe-bottom)); opacity: .8; transition: opacity .25s var(--ease); }
 #read-progress {
-  position: fixed; left: 0; right: 0; bottom: 0; height: 3px; z-index: 9;
+  position: fixed; left: 0; right: 0; bottom: var(--safe-bottom); height: 3px; z-index: 9;
   pointer-events: none; opacity: 0;
   transition: opacity .25s var(--ease), bottom .25s ease;
 }
 #read-progress.on { opacity: 1; }
-body.nav-on #read-progress { bottom: 58px; }
+body.nav-on #read-progress { bottom: calc(58px + var(--safe-bottom)); }
 #read-progress-fill {
   height: 100%; width: 0%; background: var(--accent);
   transition: width .12s linear;
