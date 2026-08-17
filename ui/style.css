@@ -476,6 +476,23 @@ body.immersive #read-progress {
   animation: card-in .32s var(--ease) backwards;
 }
 .lib-card:hover { transform: translateY(-3px); }
+/* 手机窄屏：缩小书库/卷缩略图，一行放 3 个 */
+@media (max-width: 600px) {
+  #list-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 8px 8px 48px;
+  }
+  /* min-width:0 允许卡片收缩到小于书名宽度，避免长书名把卡片撑出格子导致重叠 */
+  .lib-card { width: auto; min-width: 0; }
+  /* 裁掉缩略图溢出部分，杜绝卡片间重叠 */
+  .lib-card .thumb-wrap { overflow: hidden; }
+  .lib-card .thumb {
+    width: 100%; height: auto; aspect-ratio: 140 / 190;
+  }
+  .lib-card .name { font-size: 11px; }
+}
 @keyframes card-in {
   from { opacity: 0; transform: translateY(10px); }
 }
