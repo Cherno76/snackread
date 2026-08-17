@@ -3600,7 +3600,7 @@ tocPanelEl.addEventListener('click', (e) => {
   if (e.target === tocPanelEl) closeTocPanel();
 });
 
-// 顶部感应区：鼠标移入顶部 70px 滑入；移出 150ms 后滑出；区域内静止 1.5s 也滑出
+// 阅读控件呼出：手机全屏任意位置点击/移动即呼出，静止 1.5s 后自动收起
 let controlsHideTimer = 0;
 function hideReadingControlsSoon(ms) {
   clearTimeout(controlsHideTimer);
@@ -3613,16 +3613,21 @@ function hideReadingControlsSoon(ms) {
 }
 window.addEventListener('mousemove', (e) => {
   if (focus !== 'strip') return;
-  if (e.clientY <= window.innerHeight * 0.3) {
-    modeTabEl.classList.add('show');
-    pageModeEl.classList.add('show');
-    themeBtnEl.classList.add('show');
-    readerBackEl.classList.add('show');
-    hideReadingControlsSoon(1500);
-  } else {
-    hideReadingControlsSoon(150);
-  }
+  modeTabEl.classList.add('show');
+  pageModeEl.classList.add('show');
+  themeBtnEl.classList.add('show');
+  readerBackEl.classList.add('show');
+  hideReadingControlsSoon(1500);
 });
+window.addEventListener('touchstart', () => {
+  if (focus !== 'strip') return;
+  wakeFromImmersive(); // 沉浸模式已隐藏时，触摸先唤醒
+  modeTabEl.classList.add('show');
+  pageModeEl.classList.add('show');
+  themeBtnEl.classList.add('show');
+  readerBackEl.classList.add('show');
+  hideReadingControlsSoon(1500);
+}, { passive: true });
 modeTabEl.addEventListener('mouseenter', () => clearTimeout(controlsHideTimer));
 pageModeEl.addEventListener('mouseenter', () => clearTimeout(controlsHideTimer));
 themeBtnEl.addEventListener('mouseenter', () => clearTimeout(controlsHideTimer));
