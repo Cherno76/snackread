@@ -1,10 +1,16 @@
 package com.cherno.cshow_gui
 
+import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
 import android.net.Uri
+import android.webkit.JavascriptInterface
+import android.webkit.WebView
 
 class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -23,6 +29,34 @@ class MainActivity : TauriActivity() {
       } catch (_: Exception) {
         startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
       }
+    }
+  }
+
+  // 标题栏状态桥：JS 读取电池电量与网络类型（Wi-Fi / 蜂窝），只读、无副作用
+  override fun onWebViewCreate(webView: WebView) {
+    super.onWebViewCreate(webView)
+    webView.post {
+      webView.addJavascriptInterface(StatusBridge(this), "AndroidStatus")
+    }
+  }
+
+  class StatusBridge(private val activity: MainActivity) {
+    @JavascriptInterface
+    fun getStatus(): String {
+      var battery = -1
+      try {
+        val bm = activity.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        battery = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+      } catch (_: Exception) {
+      }
+      var wifi = false
+      try {
+        val cm = activity.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+        wifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+      } catch (_: Exception) {
+      }
+      return "{\"battery\":$battery,\"wifi\":$wifi}"
     }
   }
 }

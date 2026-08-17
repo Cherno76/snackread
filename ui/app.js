@@ -20,6 +20,52 @@ const versionEl = document.getElementById('version');
 const statusbarEl = document.getElementById('statusbar');
 const titlebarEl = document.getElementById('titlebar');
 const titlebarTextEl = document.getElementById('titlebar-text');
+const barTimeEl = document.getElementById('bar-time');
+const barWifiEl = document.getElementById('bar-wifi');
+const barCellEl = document.getElementById('bar-cell');
+const batEl = document.getElementById('bar-battery');
+const batFillEl = document.getElementById('bat-fill');
+const batPctEl = document.getElementById('bat-pct');
+
+// 标题栏右侧状态：时间 + 网络（Wi-Fi/蜂窝代次）+ 电池百分比
+function titleBarStatus() {
+  const d = new Date();
+  barTimeEl.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  let battery = -1, wifi = null;
+  try {
+    if (window.AndroidStatus) {
+      const s = JSON.parse(window.AndroidStatus.getStatus());
+      battery = s.battery;
+      wifi = s.wifi;
+    }
+  } catch { /* 桥未就绪，稍后重试 */ }
+  let cell = '';
+  try {
+    const ct = (navigator.connection && navigator.connection.effectiveType) || '';
+    cell = ct === '4g' ? '4G' : (ct === '3g' ? '3G' : (ct === '2g' || ct === 'slow-2g' ? '2G' : ''));
+  } catch { /* 忽略 */ }
+  if (wifi === true) {
+    barWifiEl.hidden = false;
+    barCellEl.hidden = true;
+  } else {
+    barWifiEl.hidden = true;
+    barCellEl.hidden = cell ? false : true;
+    barCellEl.textContent = cell;
+  }
+  if (battery >= 0 && battery <= 100) {
+    batFillEl.style.width = battery + '%';
+    batPctEl.textContent = String(battery);
+    batEl.classList.toggle('low', battery <= 20);
+    batEl.hidden = false;
+  } else {
+    batEl.hidden = true;
+  }
+}
+titleBarStatus();
+setInterval(titleBarStatus, 30000);
+if (navigator.connection) {
+  navigator.connection.addEventListener('change', titleBarStatus);
+}
 const progressEl = document.getElementById('progress');
 const readingEl = document.getElementById('reading');
 const modeTabEl = document.getElementById('mode-tab');

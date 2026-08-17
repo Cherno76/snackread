@@ -42,7 +42,24 @@
   </div>
   <button id="theme-btn" title="阅读背景"></button>
   <button id="reader-back" title="返回书库"></button>
-  <div id="titlebar"><span id="titlebar-text">cshow-gui</span></div>
+  <div id="titlebar">
+    <span id="titlebar-text">cshow-gui</span>
+    <div id="bar-status">
+      <span id="bar-time">--:--</span>
+      <span id="bar-network">
+        <svg id="bar-wifi" viewBox="0 0 16 12" width="15" height="11" fill="none" aria-hidden="true">
+          <path d="M1.5 4.2a9.5 9.5 0 0 1 13 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          <path d="M4 7.2a5.5 5.5 0 0 1 8 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          <circle cx="8" cy="10.2" r="1.2" fill="currentColor"/>
+        </svg>
+        <span id="bar-cell"></span>
+      </span>
+      <span class="bat" id="bar-battery">
+        <span class="bat-fill" id="bat-fill"></span>
+        <span class="bat-pct" id="bat-pct">--</span>
+      </span>
+    </div>
+  </div>
   <div id="toc-backdrop" hidden></div>
   <div id="toc-panel">
     <div id="toc-panel-head"><span id="toc-panel-title">目录</span><button id="toc-close" class="icon-btn">×</button></div>
