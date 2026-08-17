@@ -311,10 +311,11 @@ pub fn get_book(conn: &Connection, path: &str) -> Result<Option<BookRow>, String
         .map_err(|e| e.to_string())
 }
 
-/// 书库中所有 EPUB 文件路径（散装与分卷），用于计算当前缓存 key
+/// 书库中所有 EPUB/TXT 文件路径（散装与分卷），用于计算解包缓存 key
+/// （TXT 解析产物也存放在同一个 epub 缓存目录）
 pub fn list_epub_paths(conn: &Connection) -> Result<Vec<String>, String> {
     let mut stmt = conn
-        .prepare("SELECT path FROM books WHERE kind = 'epub'")
+        .prepare("SELECT path FROM books WHERE kind IN ('epub', 'txt')")
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |r| r.get::<_, String>(0))
