@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>cshow-gui</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar" class="expanded">
+      <div id="favorites">
+        <div class="fav-title">
+          <button id="lib-grid-back" class="icon-btn" hidden></button>
+          <div id="lib-tabs"></div>
+          <span id="lib-title" hidden></span>
+          <button id="lib-reset" class="icon-btn" title="重置本书阅读记录" hidden></button>
+          <span id="lib-eye" class="eye-toggle"></span>
+          <button id="lib-stats" class="icon-btn" title="阅读统计" hidden></button>
+          <button id="lib-gear" class="icon-btn" title="书库管理"></button>
+        </div>
+      </div>
+      <div id="tag-bar" hidden></div>
+      <div id="list-grid" hidden></div>
+    </aside>
+    <main id="pane">
+      <div id="mode-tab" hidden>
+        <button id="toc-btn" class="text-ctl" title="目录">目录</button>
+        <button id="mode-scroll">条漫</button><button id="mode-flip">翻页</button>
+        <span class="ctl-sep"></span>
+        <button id="font-minus" class="text-ctl" title="减小字号">A−</button>
+        <button id="font-family" class="text-ctl" title="切换正文字体">字体</button>
+        <button id="font-plus" class="text-ctl" title="增大字号">A+</button>
+      </div>
+      <div id="preview"></div>
+      <div id="strip"></div>
+      <div id="page-nav"></div>
+    </main>
+  </div>
+  <div id="page-mode" hidden>
+    <button id="page-single">单页</button><button id="page-double">双页</button>
+  </div>
+  <button id="theme-btn" title="阅读背景"></button>
+  <button id="reader-back" title="返回书库"></button>
+  <div id="toc-panel">
+    <div id="toc-panel-head"><span>目录</span><button id="toc-close" class="icon-btn">×</button></div>
+    <ul id="toc-list"></ul>
+  </div>
+  <div id="statusbar">
+    <div id="version"></div>
+    <div id="grid-stats" hidden></div>
+  </div>
+  <div id="reading"></div>
+  <div id="progress"></div>
+  <div id="read-progress"><div id="read-progress-fill"></div></div>
+  <div id="lib-dialog" hidden>
+    <div id="lib-dialog-box">
+      <div id="lib-dialog-head">
+        <span>书库管理</span>
+        <button id="lib-dialog-close" class="icon-btn">×</button>
+      </div>
+      <div class="lib-section">当前书库</div>
+      <ul id="lib-list"></ul>
+      <div class="lib-section">添加文件夹</div>
+      <div id="lib-browse">
+        <button id="lib-up" class="btn">↑ 上级</button>
+        <span id="lib-path"></span>
+      </div>
+      <ul id="lib-dirs"></ul>
+      <div id="lib-actions">
+        <button id="lib-add" class="btn btn-primary">添加此文件夹</button>
+        <span id="lib-state"></span>
+      </div>
+      <div class="lib-section">工作目录（缓存存放处）</div>
+      <div id="lib-workdir">
+        <span id="lib-workdir-path"></span>
+        <button id="lib-workdir-change" class="btn">更换</button>
+      </div>
+      <div class="lib-section">AI 设置（书籍信息「AI填入」）</div>
+      <div id="lib-apikey">
+        <input id="lib-apikey-input" type="password" placeholder="DeepSeek API Key" autocomplete="off">
+        <span id="lib-apikey-state"></span>
+        <button id="lib-apikey-save" class="btn">保存</button>
+      </div>
+    </div>
+  </div>
+  <div id="meta-dialog" hidden>
+    <div id="meta-dialog-box">
+      <div id="meta-dialog-head">
+        <span>书籍信息</span>
+        <button id="meta-dialog-close" class="icon-btn">×</button>
+      </div>
+      <div id="meta-dialog-body">
+        <div class="meta-row"><label for="meta-title">书名</label><input id="meta-title" type="text" placeholder="留空使用文件名"></div>
+        <div class="meta-row"><label for="meta-author">作者</label><input id="meta-author" type="text" placeholder="可选"></div>
+        <div class="meta-row"><label>评分</label><div id="meta-stars"></div><span id="meta-rating-note" class="meta-rating-note"></span></div>
+        <div class="meta-row"><label for="meta-tags">标签</label><input id="meta-tags" type="text" placeholder="用逗号或空格分隔"></div>
+        <div class="meta-row note"><label for="meta-note">备注</label><textarea id="meta-note" rows="3" placeholder="可选，悬停封面时显示"></textarea></div>
+        <div class="meta-row"><label>封面</label>
+          <div id="meta-cover">
+            <img id="meta-cover-preview" alt="封面预览" hidden>
+            <input id="meta-cover-file" type="file" accept="image/*" hidden>
+            <button id="meta-cover-pick" class="btn" type="button">选择图片</button>
+            <button id="meta-cover-remove" class="btn" type="button" hidden>移除</button>
+            <span id="meta-cover-status" class="meta-fix-status"></span>
+          </div>
+        </div>
+        <div class="meta-row"><label></label><button id="meta-fix-toc" class="btn" type="button">修复目录</button><span id="meta-fix-status" class="meta-fix-status"></span></div>
+        <div id="meta-smart-status" class="meta-smart-status" hidden></div>
+      </div>
+      <div id="meta-dialog-actions">
+        <button id="meta-smart" class="btn" type="button">AI填入</button>
+        <button id="meta-cancel" class="btn">取消</button>
+        <button id="meta-save" class="btn btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+  <div id="stats-dialog" hidden>
+    <div id="stats-dialog-box">
+      <div id="stats-dialog-head">
+        <span>阅读统计</span>
+        <button id="stats-dialog-close" class="icon-btn">×</button>
+      </div>
+      <div id="stats-dialog-body">
+        <div id="stats-summary"></div>
+        <div class="stats-section">最近在读</div>
+        <div id="stats-recent"></div>
+      </div>
+    </div>
+  </div>
+  <div id="next-vol-dialog" hidden>
+    <div id="next-vol-box">
+      <div id="next-vol-cover"></div>
+      <div id="next-vol-side">
+        <div id="next-vol-time"></div>
+        <div id="next-vol-title"><span>下一本</span><b id="next-vol-name"></b></div>
+        <div id="next-vol-actions">
+          <button id="next-vol-continue" class="btn btn-primary">继续阅读</button>
+          <button id="next-vol-cancel" class="btn">取消</button>
+          <button id="next-vol-exit" class="btn">退出阅读</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="hover-tip" hidden></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

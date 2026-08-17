@@ -1,0 +1,28 @@
+/* cshow-gui 文字 EPUB 阅读器基础样式（解包时注入各章节） */
+html, body { margin: 0; padding: 0; }
+/* 解包时标记的固定页眉/页脚（页码、书名 – 作者等）不显示 */
+[data-cshow-hdr] { display: none !important; }
+/* 分页容器：列即页；JS 通过内联 <style> 设置 column-width/gap/height */
+.cshow-pages { box-sizing: border-box; }
+.cshow-pages img,
+.cshow-pages svg,
+.cshow-pages video {
+  max-width: 100%;
+  max-height: 100%; /* 竖版大图（如封面）按列高缩放，避免超出单列高度被截断 */
+  height: auto;
+}
+/* 避免插图/表格/代码块被列边界劈开 */
+.cshow-pages figure,
+.cshow-pages table,
+.cshow-pages pre,
+.cshow-pages blockquote,
+.cshow-pages img,
+.cshow-pages svg {
+  -webkit-column-break-inside: avoid; /* WKWebView 多列实现需要前缀 */
+  break-inside: avoid;
+}
+.cshow-pages h1, .cshow-pages h2, .cshow-pages h3,
+.cshow-pages h4, .cshow-pages h5, .cshow-pages h6 { break-after: avoid; }
+/* TXT 书：源文件每行一段、行首有全角空格缩进，解析时已去掉行首空格，
+   这里用标准首行缩进还原排版 */
+body.cshow-txt p { text-indent: 2em; }
