@@ -91,8 +91,7 @@ body {
 .lib-tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 #lib-title { margin-right: auto; letter-spacing: normal; }
 #lib-title.vol-title { margin-right: 0; }
-#lib-eye { color: var(--muted2); cursor: pointer; padding: 2px 4px; border-radius: 4px; display: none; }
-.fav-title:hover #lib-eye { display: flex; }
+#lib-eye { color: var(--muted2); cursor: pointer; padding: 2px 4px; border-radius: 4px; display: flex; }
 #lib-eye[hidden], #lib-gear[hidden] { display: none !important; }
 #lib-eye svg { display: block; }
 #lib-eye:hover { color: var(--gold); background: var(--btn); }
@@ -475,7 +474,6 @@ body.immersive #read-progress {
   transition: transform .18s var(--ease);
   animation: card-in .32s var(--ease) backwards;
 }
-.lib-card:hover { transform: translateY(-3px); }
 /* 手机窄屏：缩小书库/卷缩略图，一行放 3 个 */
 @media (max-width: 600px) {
   #list-grid {
@@ -519,7 +517,6 @@ body.immersive #read-progress {
   border: 1px solid var(--border2); border-radius: var(--radius-m);
   transition: transform .18s var(--ease), box-shadow .18s var(--ease);
 }
-.lib-card:hover .thumb { transform: scale(1.03); box-shadow: var(--shadow-2); }
 .lib-card.sel .thumb { outline: 2px solid var(--accent); }
 .lib-card .name {
   margin-top: 6px; font-size: 12px; text-align: center; color: var(--item);
@@ -563,17 +560,15 @@ body.immersive #read-progress {
 /* 有"最近"胶囊时进度条右端缩短，避免与胶囊重叠 */
 .lib-card.has-recent .prog { right: 52px; }
 .lib-card .eye-toggle {
-  position: absolute; top: 6px; right: 6px; z-index: 1; display: none;
+  position: absolute; top: 6px; right: 6px; z-index: 1; display: flex;
   background: var(--pill); border-radius: 4px; padding: 3px;
 }
-.lib-card:hover .eye-toggle { display: flex; }
 .lib-card .eye-toggle.off { display: flex; }
 .lib-card .refresh-btn {
-  position: absolute; top: 6px; left: 6px; z-index: 1; display: none;
+  position: absolute; top: 6px; left: 6px; z-index: 1; display: flex;
   background: var(--pill); border-radius: 4px; padding: 3px;
   color: var(--muted2); cursor: pointer;
 }
-.lib-card:hover .refresh-btn { display: flex; }
 .lib-card .refresh-btn svg { display: block; }
 .lib-card .refresh-btn:hover { color: var(--gold); background: var(--btn); }
 /* 进度条：缩略图内底部，药丸形凹槽，左右/下各留 8px 间距 */
@@ -636,11 +631,10 @@ body.immersive #read-progress {
 }
 /* 卡片编辑按钮（眼睛左侧） */
 .lib-card .edit-btn {
-  position: absolute; top: 6px; right: 30px; z-index: 1; display: none;
+  position: absolute; top: 6px; right: 30px; z-index: 1; display: flex;
   background: var(--pill); border-radius: 4px; padding: 3px;
   color: var(--muted2); cursor: pointer;
 }
-.lib-card:hover .edit-btn { display: flex; }
 .lib-card .edit-btn svg { display: block; }
 .lib-card .edit-btn:hover { color: var(--accent); background: var(--btn); }
 /* 标签筛选栏 */
