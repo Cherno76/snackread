@@ -92,22 +92,22 @@ body {
 #bar-wifi[hidden], #bar-cell[hidden] { display: none; }
 /* 电池图标：外框 + 内部电量条 + 内部百分比 */
 .bat {
-  position: relative; width: 25px; height: 13px;
-  border: 1px solid var(--muted2); border-radius: 3px;
+  position: relative; width: 27px; height: 14px;
+  border: 1.5px solid var(--muted2); border-radius: 4.5px;
   display: flex; align-items: center; justify-content: center;
 }
 .bat::after {
-  content: ''; position: absolute; right: -4px; top: 3px;
-  width: 2px; height: 6px; background: var(--muted2); border-radius: 1px;
+  content: ''; position: absolute; right: -4.5px; top: 4px;
+  width: 2.5px; height: 6px; background: var(--muted2); border-radius: 1.5px;
 }
 .bat-fill {
-  position: absolute; left: 1px; top: 1px; bottom: 1px;
-  background: var(--accent); border-radius: 1px; z-index: 0;
+  position: absolute; left: 1.5px; top: 1.5px; bottom: 1.5px;
+  background: #4caf50; border-radius: 2.5px; z-index: 0;
 }
 .bat.low .bat-fill { background: var(--red); }
 .bat-pct {
   position: relative; z-index: 1;
-  font-size: 7px; font-weight: 700; line-height: 1; color: var(--text);
+  font-size: 7px; font-weight: 700; line-height: 1;
 }
 #bar-battery[hidden] { display: none; }
 /* 阅读时标题栏跟随控件显隐；底部状态栏（应用名/版本/统计）阅读时始终隐藏，

@@ -56,6 +56,8 @@ function titleBarStatus() {
     batFillEl.style.width = battery + '%';
     batPctEl.textContent = String(battery);
     batEl.classList.toggle('low', battery <= 20);
+    // 电量条覆盖到文字时用白字保证对比度
+    batPctEl.style.color = battery > 55 ? '#fff' : '';
     batEl.hidden = false;
   } else {
     batEl.hidden = true;
