@@ -3618,7 +3618,7 @@ tocPanelEl.addEventListener('click', (e) => {
   if (e.target === tocPanelEl) closeTocPanel();
 });
 
-// 阅读控件呼出：手机全屏任意位置点击/移动即呼出，静止 1.5s 后自动收起
+// 阅读控件呼出：全屏轻点呼出（滑动翻页不呼出），静止 1.5s 后自动收起
 let controlsHideTimer = 0;
 function hideReadingControlsSoon(ms) {
   clearTimeout(controlsHideTimer);
@@ -3629,16 +3629,32 @@ function hideReadingControlsSoon(ms) {
     readerBackEl.classList.remove('show');
   }, ms);
 }
-window.addEventListener('mousemove', (e) => {
+let touchActive = false; // 触摸手势进行中：抑制合成的鼠标事件，避免滑动翻页时呼出控件
+window.addEventListener('touchstart', () => { touchActive = true; }, { passive: true });
+window.addEventListener('touchend', () => { touchActive = false; });
+window.addEventListener('touchcancel', () => { touchActive = false; });
+window.addEventListener('mousemove', () => {
   if (focus !== 'strip') return;
+  if (touchActive) return; // 触摸手势中的合成 mousemove 不算
   modeTabEl.classList.add('show');
   pageModeEl.classList.add('show');
   themeBtnEl.classList.add('show');
   readerBackEl.classList.add('show');
   hideReadingControlsSoon(1500);
 });
-window.addEventListener('touchstart', () => {
+// 轻点检测：位移 <10px 且 <500ms 才算轻点，才呼出控件
+let tapStartX = 0, tapStartY = 0, tapStartT = 0, tapMoved = false;
+window.addEventListener('touchstart', (e) => {
+  const t = e.touches[0];
+  tapStartX = t.clientX; tapStartY = t.clientY; tapStartT = Date.now(); tapMoved = false;
+}, { passive: true });
+window.addEventListener('touchmove', (e) => {
+  const t = e.touches[0];
+  if (Math.abs(t.clientX - tapStartX) > 10 || Math.abs(t.clientY - tapStartY) > 10) tapMoved = true;
+}, { passive: true });
+window.addEventListener('touchend', () => {
   if (focus !== 'strip') return;
+  if (tapMoved || Date.now() - tapStartT > 500) return; // 滑动/长按不呼出
   wakeFromImmersive(); // 沉浸模式已隐藏时，触摸先唤醒
   modeTabEl.classList.add('show');
   pageModeEl.classList.add('show');
