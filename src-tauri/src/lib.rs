@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::Manager;
 use tauri::Emitter;
 use std::fs;
@@ -6,7 +6,7 @@ use std::io::{Read, Write};
 use std::collections::{hash_map::DefaultHasher, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, UNIX_EPOCH};
 use std::cmp::Ordering;
 use regex::Regex;
@@ -509,9 +509,126 @@ fn add_reading_time(state: tauri::State<'_, db::Db>, path: String, seconds: u64)
     db::add_read_time(&conn, &path, seconds)
 }
 
+// ---- 内置元数据预置库：新书（完全无元数据）按书名自动匹配填充 ----
+
+const META_PRESETS_JSON: &str = include_str!("meta_presets.json");
+
+#[derive(Deserialize, Clone)]
+struct MetaPreset {
+    title: String,
+    #[serde(default)]
+    author: String,
+    #[serde(default)]
+    rating: f64,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
+    note: String,
+    #[serde(default)]
+    name: String,
+}
+
+/// 规范化书名：去括号内容、去空白，转小写（用于预置库匹配）
+fn norm_title_key(s: &str) -> String {
+    let mut out = String::new();
+    let mut depth = 0i32;
+    for c in s.trim().chars() {
+        match c {
+            '[' | '（' | '(' | '《' => depth += 1,
+            ']' | '）' | ')' | '》' => depth = (depth - 1).max(0),
+            _ if depth == 0 => out.push(c.to_ascii_lowercase()),
+            _ => {}
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn meta_presets() -> &'static HashMap<String, MetaPreset> {
+    static MAP: OnceLock<HashMap<String, MetaPreset>> = OnceLock::new();
+    MAP.get_or_init(|| {
+        let mut m: HashMap<String, MetaPreset> = HashMap::new();
+        if let Ok(list) = serde_json::from_str::<Vec<MetaPreset>>(META_PRESETS_JSON) {
+            for p in list {
+                let k = norm_title_key(&p.title);
+                if !k.is_empty() {
+                    m.entry(k).or_insert_with(|| p.clone());
+                }
+                if !p.name.is_empty() {
+                    let stem = Path::new(&p.name)
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    let k2 = norm_title_key(&stem);
+                    if !k2.is_empty() {
+                        m.entry(k2).or_insert_with(|| p.clone());
+                    }
+                }
+            }
+        }
+        m
+    })
+}
+
+/// 新书自动填元数据：仅当书完全没有元数据（title/author/rating/tags/note 全空）时，
+/// 按规范化文件名匹配内置预置库，填入预置数据（不含封面）。
+fn maybe_fill_preset_meta(conn: &rusqlite::Connection, path: &str) {
+    let (kind, is_ebook, hidden, read_time, last_vol, last_at) =
+        match db::get_book(conn, path).ok().flatten() {
+            Some(b) => {
+                let empty = b.title.trim().is_empty()
+                    && b.author.trim().is_empty()
+                    && b.rating <= 0.0
+                    && (b.tags == "[]" || b.tags.trim().is_empty())
+                    && b.note.trim().is_empty();
+                if !empty {
+                    return;
+                }
+                (b.kind, b.is_ebook, b.hidden, b.read_time, b.last_read_volume, b.last_read_at)
+            }
+            None => {
+                // 还没有行：按文件类型推断（仅书类文件/目录才建行）
+                let ext = Path::new(path)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.to_ascii_lowercase())
+                    .unwrap_or_default();
+                let kind = match ext.as_str() {
+                    "epub" => "epub",
+                    "txt" => "txt",
+                    "pdf" => "pdf",
+                    _ => "dir",
+                };
+                (kind.to_string(), kind != "dir", false, 0u64, String::new(), 0u64)
+            }
+        };
+    let stem = Path::new(path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let key = norm_title_key(&stem);
+    let Some(preset) = meta_presets().get(&key) else { return };
+    let tags = serde_json::to_string(&preset.tags).unwrap_or_else(|_| "[]".into());
+    let _ = db::upsert_book(
+        conn,
+        path,
+        &kind,
+        is_ebook,
+        hidden,
+        &preset.title,
+        &preset.author,
+        preset.rating,
+        &tags,
+        &preset.note,
+        read_time,
+        if last_vol.is_empty() { None } else { Some(last_vol.as_str()) },
+        last_at,
+    );
+}
+
 #[tauri::command]
 fn get_book_meta(state: tauri::State<'_, db::Db>, path: String) -> BookMeta {
     let conn = state.0.lock().unwrap();
+    maybe_fill_preset_meta(&conn, &path);
     db::get_book(&conn, &path)
         .ok()
         .flatten()
@@ -1492,6 +1609,9 @@ async fn fix_epub_toc(path: String) -> Result<TocFixReport, String> {
 #[tauri::command]
 fn list_book_meta(state: tauri::State<'_, db::Db>, paths: Vec<String>) -> Vec<serde_json::Value> {
     let conn = state.0.lock().unwrap();
+    for p in &paths {
+        maybe_fill_preset_meta(&conn, p);
+    }
     db::list_book_meta(&conn, &paths).unwrap_or_default()
 }
 
@@ -3580,6 +3700,7 @@ fn open_epub(app: tauri::AppHandle, path: String) -> Result<EpubMeta, String> {
         let state = app.state::<db::Db>();
         let conn = state.0.lock().unwrap();
         let _ = db::ensure_book(&conn, &norm_path(&src), if is_txt { "txt" } else { "epub" });
+        maybe_fill_preset_meta(&conn, &norm_path(&src));
     }
     let base = epub_cache_dir().join(epub_cache_key(&src));
     // 先更新 book:// 的服务根，再走缓存：否则第二次打开会拿到旧书内容
