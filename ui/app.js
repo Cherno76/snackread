@@ -1541,7 +1541,8 @@ function textVolumeOf(ch) {
 
 function computeWindowTitle() {
   if (!winTitleBook && !winTitleVol) return 'cshow-gui';
-  let t = 'cshow-gui - 《' + winTitleBook + '》';
+  // 阅读模式：标题栏只显示书信息，不带应用名前缀
+  let t = focus === 'strip' ? '《' + winTitleBook + '》' : 'cshow-gui - 《' + winTitleBook + '》';
   if (winTitleVol && winTitleVol !== winTitleBook) t += ' ' + winTitleVol;
   if (textBook && epubMeta) {
     // 文字书：书名后跟当前章节（含章节名）
