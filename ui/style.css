@@ -368,17 +368,6 @@ body {
   height: 100%; width: 0%; background: var(--accent);
   transition: width .12s linear;
 }
-/* 沉浸模式：阅读时静止约 3 秒后隐藏所有悬浮控件 */
-body.immersive #mode-tab,
-body.immersive #page-mode,
-body.immersive #theme-btn,
-body.immersive #reader-back,
-body.immersive #page-nav,
-body.immersive #statusbar,
-body.immersive #read-progress {
-  opacity: 0 !important;
-  pointer-events: none !important;
-}
 /* 书库管理对话框 */
 #lib-dialog {
   position: fixed; inset: 0; z-index: 20;

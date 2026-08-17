@@ -131,7 +131,6 @@ let textPendingAnimate = false;  // 跨章翻页：待定位完成后是否用�
 let pendingScrollRestore = null; // 翻页→滚动时待恢复的滚动位置 {chapter, frac}
 let readerFontSize = 16;         // 正文字号（px）
 let readerFontFamily = 'system'; // system | serif | sans
-let immersiveTimer = 0;   // 沉浸模式空闲计时器
 let readTimes = {};       // 各书籍累计阅读时长（秒）内存缓存：{ bookPath: seconds }（以 .cshow 为准）
 let readingStartAt = 0;   // 本次阅读开始的毫秒时间戳
 let bookMetaMap = {};     // path -> {title, author, rating, tags}
@@ -1409,11 +1408,6 @@ function setFocus(f) {
   versionEl.style.display = f === 'strip' ? 'none' : '';
   updateReadingLabel();
   updateProgressBar();
-  if (f === 'strip') scheduleImmersive();
-  else {
-    clearTimeout(immersiveTimer);
-    document.body.classList.remove('immersive');
-  }
 }
 
 // 窗口标题状态：书名（元数据优先）+ 卷名，供章节/页码更新时复用
@@ -3467,6 +3461,7 @@ function updatePageTocSel() {
 }
 
 stripEl.addEventListener('scroll', () => {
+  hideReadingControlsNow(); // 滑动阅读时立即收起控件
   highlightIndex(currentStripIndex());
   updatePageTocSel();
   // 虚拟化：滚动模式跟随当前位置补/删占位 div（rAF 合并高频滚动）
@@ -3551,6 +3546,7 @@ stripEl.addEventListener('touchmove', (e) => {
   }
   e.preventDefault();
   handleFlipWheel(-dx); // 手指左滑 = 下一页（直觉方向）
+  hideReadingControlsNow(); // 滑动翻页立即收起控件
 }, { passive: false });
 stripEl.addEventListener('touchend', () => { touchFlipOn = false; });
 stripEl.addEventListener('touchcancel', () => { touchFlipOn = false; });
@@ -3629,6 +3625,13 @@ function hideReadingControlsSoon(ms) {
     readerBackEl.classList.remove('show');
   }, ms);
 }
+function hideReadingControlsNow() {
+  clearTimeout(controlsHideTimer);
+  modeTabEl.classList.remove('show');
+  pageModeEl.classList.remove('show');
+  themeBtnEl.classList.remove('show');
+  readerBackEl.classList.remove('show');
+}
 let touchActive = false; // 触摸手势进行中：抑制合成的鼠标事件，避免滑动翻页时呼出控件
 window.addEventListener('touchstart', () => { touchActive = true; }, { passive: true });
 window.addEventListener('touchend', () => { touchActive = false; });
@@ -3640,7 +3643,7 @@ window.addEventListener('mousemove', () => {
   pageModeEl.classList.add('show');
   themeBtnEl.classList.add('show');
   readerBackEl.classList.add('show');
-  hideReadingControlsSoon(1500);
+  hideReadingControlsSoon(3000);
 });
 // 轻点检测：位移 <10px 且 <500ms 才算轻点，才呼出控件
 let tapStartX = 0, tapStartY = 0, tapStartT = 0, tapMoved = false;
@@ -3655,12 +3658,11 @@ window.addEventListener('touchmove', (e) => {
 window.addEventListener('touchend', () => {
   if (focus !== 'strip') return;
   if (tapMoved || Date.now() - tapStartT > 500) return; // 滑动/长按不呼出
-  wakeFromImmersive(); // 沉浸模式已隐藏时，触摸先唤醒
   modeTabEl.classList.add('show');
   pageModeEl.classList.add('show');
   themeBtnEl.classList.add('show');
   readerBackEl.classList.add('show');
-  hideReadingControlsSoon(1500);
+  hideReadingControlsSoon(3000);
 }, { passive: true });
 modeTabEl.addEventListener('mouseenter', () => clearTimeout(controlsHideTimer));
 pageModeEl.addEventListener('mouseenter', () => clearTimeout(controlsHideTimer));
@@ -3670,26 +3672,6 @@ modeTabEl.addEventListener('mouseleave', () => hideReadingControlsSoon(150));
 pageModeEl.addEventListener('mouseleave', () => hideReadingControlsSoon(150));
 themeBtnEl.addEventListener('mouseleave', () => hideReadingControlsSoon(150));
 readerBackEl.addEventListener('mouseleave', () => hideReadingControlsSoon(150));
-
-// 沉浸模式：阅读时静止约 3 秒后隐藏所有悬浮控件，动一下即恢复
-function scheduleImmersive() {
-  clearTimeout(immersiveTimer);
-  if (focus !== 'strip') return;
-  immersiveTimer = setTimeout(() => document.body.classList.add('immersive'), 3000);
-}
-function wakeFromImmersive() {
-  clearTimeout(immersiveTimer);
-  document.body.classList.remove('immersive');
-  scheduleImmersive();
-}
-window.addEventListener('mousemove', () => {
-  if (focus !== 'strip') return;
-  wakeFromImmersive();
-});
-window.addEventListener('keydown', () => {
-  if (focus !== 'strip') return;
-  wakeFromImmersive();
-});
 
 // ---- 全屏书库网格（图标视图）----
 
