@@ -110,13 +110,13 @@ body {
   font-size: 7px; font-weight: 700; line-height: 1; color: var(--text);
 }
 #bar-battery[hidden] { display: none; }
-/* 阅读时标题栏与底部状态栏跟随控件显隐 */
+/* 阅读时标题栏跟随控件显隐；底部状态栏（应用名/版本/统计）阅读时始终隐藏，
+   避免出现空状态栏盖住左下角卷/章信息与右下角页码 */
 body.reading #titlebar,
 body.reading #statusbar {
   opacity: 0; pointer-events: none;
 }
-body.reading.ctl-on #titlebar,
-body.reading.ctl-on #statusbar {
+body.reading.ctl-on #titlebar {
   opacity: 1;
 }
 /* 控件呼出时标题栏占据顶部，阅读控件下移避开 */
