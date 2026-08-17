@@ -354,8 +354,7 @@ body {
   position: fixed; left: 14px; bottom: calc(12px + var(--safe-bottom)); font-size: 12px;
   color: var(--muted); background: var(--pill); padding: 4px 10px;
   border-radius: var(--radius-l); pointer-events: none; display: none;
-  max-width: 42vw; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 88vw; white-space: normal; line-height: 1.5;
   opacity: .8; transition: opacity .25s var(--ease);
 }
 #progress { bottom: calc(12px + var(--safe-bottom)); opacity: .8; transition: opacity .25s var(--ease); }
