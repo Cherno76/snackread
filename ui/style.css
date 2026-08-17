@@ -97,8 +97,9 @@ body {
   display: flex; align-items: center; justify-content: center;
 }
 .bat::after {
-  content: ''; position: absolute; right: -4.5px; top: 4px;
+  content: ''; position: absolute; right: -4.5px; top: 50%;
   width: 2.5px; height: 6px; background: var(--muted2); border-radius: 1.5px;
+  transform: translateY(-50%);
 }
 .bat-fill {
   position: absolute; left: 1.5px; top: 1.5px; bottom: 1.5px;
