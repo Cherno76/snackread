@@ -32,6 +32,7 @@ const readProgressFillEl = document.getElementById('read-progress-fill');
 const gridStatsEl = document.getElementById('grid-stats');
 const libStatsEl = document.getElementById('lib-stats');
 const tagBarEl = document.getElementById('tag-bar');
+const tagToggleEl = document.getElementById('tag-toggle');
 const metaDialogEl = document.getElementById('meta-dialog');
 const metaDialogCloseEl = document.getElementById('meta-dialog-close');
 const metaTitleEl = document.getElementById('meta-title');
@@ -3895,6 +3896,8 @@ function renderTagBar() {
   tagBarEl.innerHTML = '';
   if (allTags.length === 0) {
     tagBarEl.hidden = true;
+    tagToggleEl.hidden = true;
+    tagBarEl.style.maxHeight = '';
     return;
   }
   tagBarEl.hidden = false;
@@ -3921,7 +3924,41 @@ function renderTagBar() {
     });
     tagBarEl.appendChild(chip);
   }
+  applyTagCollapse();
 }
+
+// 标签筛选栏折叠：默认只显示两行，可展开显示全部
+let tagCollapsed = true;
+function applyTagCollapse() {
+  const chips = Array.from(tagBarEl.children);
+  if (tagBarEl.hidden || chips.length === 0) {
+    tagToggleEl.hidden = true;
+    tagBarEl.style.maxHeight = '';
+    return;
+  }
+  const firstTop = chips[0].offsetTop;
+  const rows = new Set(chips.map(c => c.offsetTop)).size;
+  if (rows <= 2) {
+    tagToggleEl.hidden = true;
+    tagBarEl.style.maxHeight = '';
+    return;
+  }
+  tagToggleEl.hidden = false;
+  tagToggleEl.textContent = tagCollapsed ? '全部标签 ▾' : '收起 ▴';
+  if (tagCollapsed) {
+    const second = chips.find(c => c.offsetTop > firstTop) || chips[chips.length - 1];
+    tagBarEl.style.maxHeight = (second.offsetTop + second.offsetHeight + 8) + 'px';
+  } else {
+    tagBarEl.style.maxHeight = 'none';
+  }
+}
+tagToggleEl.addEventListener('click', () => {
+  tagCollapsed = !tagCollapsed;
+  applyTagCollapse();
+});
+window.addEventListener('resize', () => {
+  if (!tagBarEl.hidden) applyTagCollapse();
+});
 
 async function applyTagFilter() {
   const prev = libGridCards[libGridSel] ? libGridCards[libGridSel].path : null;
@@ -4308,6 +4345,7 @@ function closeLibGrid() {
   gridStatsEl.hidden = true;
   libStatsEl.hidden = true;
   tagBarEl.hidden = true;
+  tagToggleEl.hidden = true;
   libGridBodyEl.hidden = true;
   libGridBackEl.hidden = true;
   libResetEl.hidden = true;
@@ -4374,6 +4412,7 @@ async function renderLibVolPage(book) {
   libGearEl.hidden = true;
   libStatsEl.hidden = true;
   tagBarEl.hidden = true;
+  tagToggleEl.hidden = true;
   // 返回按钮 = 当前书库胶囊（与书库页当前书库 tab 同款：图标 + 名称，蓝底白字）
   libGridBackEl.className = 'lib-tab on grid-back';
   libGridBackEl.textContent = '';
