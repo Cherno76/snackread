@@ -4,6 +4,16 @@
 > 结论：**可行，采用 Tauri 2 官方 Android 支持**——Rust 后端几乎原样交叉编译，
 > Web UI 直接跑在 Android WebView 里。主要工作量在存储路径、书籍导入方式和触摸交互适配。
 
+## 当前进度（2026-08-17）
+
+- ✅ Phase 1 工具链：JDK 17、Android SDK（platform 35/36、build-tools 35/36）、NDK r26d、
+  Rust Android 目标、tauri-cli 2.11.4
+- ✅ Phase 2 最小可跑：Android 工程已生成（`src-tauri/gen/android`），
+  后端路径已适配到应用内部存储（`/data/user/0/com.cherno.cshow_gui/files`），
+  APK 构建成功：`src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`
+- ⏳ 待真机验证：手机开 USB 调试后 `adb install -r <apk>`
+- ⏳ Phase 3 触摸交互适配（hover→tap、导入入口）未开始
+
 ## 1. 可行性分析
 
 ### 可以直接复用的部分
