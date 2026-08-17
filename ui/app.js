@@ -2026,6 +2026,7 @@ statsDialogEl.addEventListener('keydown', (e) => {
 
 // ---- 漫画卷尾：下一卷对话框 ----
 let nextVolCooldownUntil = 0; // 取消后的冷却，避免滚动抖动立刻再弹
+let stripUserScrolled = false; // 本次阅读会话是否发生过真实滚动（防进入时误触发卷尾弹窗）
 
 function nextComicVolume() {
   if (!stripReturn || !libGridVols || libGridVols.length < 2) return null;
@@ -2416,6 +2417,7 @@ async function enterStripMode(startPage) {
     showPane('preview');
     return;
   }
+  stripUserScrolled = false; // 新会话：重置滚动标记，防止进入时误触发卷尾弹窗
   showPane('strip');
   setFocus('strip');
   let target;
@@ -2508,6 +2510,7 @@ async function enterPdfStrip(savedPage) {
     previewEl.innerHTML = '<div class="hint">PDF 打开失败</div>';
     return;
   }
+  stripUserScrolled = false;
   showPane('strip');
   setFocus('strip');
   const page = typeof savedPage === 'number' ? savedPage : pendingPdfPage;
@@ -2632,6 +2635,7 @@ async function enterEpubStrip(savedPage, fresh) {
     return;
   }
   if (!textBook) hideTextLoading(); // 图像书无需章节加载遮罩
+  stripUserScrolled = false;
   showPane('strip');
   setFocus('strip');
   // 虚拟化：先建目标章窗口的占位 div，scrollIntoView 才能定位
@@ -3482,8 +3486,12 @@ stripEl.addEventListener('scroll', () => {
   updateProgressBar();
   // 漫画卷尾：滚动模式滚到底部 → 下一卷对话框
   if (focus === 'strip' && !textBook) {
-    const atBottom = stripEl.scrollTop + stripEl.clientHeight >= stripEl.scrollHeight - 4;
-    if (atBottom && nextVolDialogEl.hidden && Date.now() >= nextVolCooldownUntil) {
+    if (stripEl.scrollTop > 0) stripUserScrolled = true;
+    // 内容必须真的超出视口（图片未加载完时 scrollHeight 可能 ≤ clientHeight，不能算到底）
+    const scrollable = stripEl.scrollHeight > stripEl.clientHeight + 8;
+    const atBottom = scrollable &&
+      stripEl.scrollTop + stripEl.clientHeight >= stripEl.scrollHeight - 4;
+    if (atBottom && stripUserScrolled && nextVolDialogEl.hidden && Date.now() >= nextVolCooldownUntil) {
       showNextVolumeDialog();
     }
   }
