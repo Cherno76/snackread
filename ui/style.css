@@ -233,32 +233,6 @@ body {
 @keyframes page-turn-in {
   from { opacity: 0; transform: translateX(64px); }
 }
-/* 悬浮导航条：默认藏在屏幕下方，鼠标移到下部时滑出 */
-#page-nav {
-  position: fixed; left: 0; right: 0; bottom: var(--safe-bottom); height: 58px; z-index: 6;
-  background: var(--navbg); border-top: 1px solid var(--border);
-  display: flex; gap: 4px; overflow-x: auto; padding: 6px 10px;
-  align-items: center;
-  touch-action: none; /* 横滑滚动由 JS 接管，避免与阅读区手势冲突 */
-  transform: translateY(100%);
-  transition: transform .25s ease, opacity .25s var(--ease);
-  pointer-events: none;
-}
-#page-nav.show {
-  transform: translateY(0);
-  pointer-events: auto;
-}
-.nav-cell {
-  width: 38px; height: 46px; flex-shrink: 0; cursor: pointer;
-  background: var(--thumb); border: 1px solid var(--border2); border-radius: 4px;
-  overflow: hidden; display: flex; align-items: center; justify-content: center;
-  font-size: 11px; color: var(--muted);
-}
-.nav-cell.now { outline: 2px solid var(--accent); }
-#page-nav::-webkit-scrollbar { height: 6px; }
-/* 导航条浮出时，底部状态标签上移避开（不压缩阅读区） */
-body.nav-on #statusbar, body.nav-on #reading { bottom: calc(68px + var(--safe-bottom)); }
-body.nav-on #progress { bottom: calc(68px + var(--safe-bottom)); }
 #version, #progress {
   position: fixed; right: 14px; font-size: 12px;
   color: var(--muted); background: var(--pill); padding: 4px 10px;
@@ -314,6 +288,9 @@ body.nav-on #progress { bottom: calc(68px + var(--safe-bottom)); }
 #mode-tab.text-book .text-ctl { display: inline-flex; }
 #mode-tab.text-book .ctl-sep { display: block; width: 1px; background: var(--border); margin: 0 2px; }
 #mode-tab .text-ctl { font-size: 12px; font-weight: 600; }
+/* 页码控件：漫画/PDF 阅读时显示（文字书隐藏） */
+#mode-tab .page-ctl { display: none; }
+#mode-tab:not(.text-book) .page-ctl { display: inline-flex; }
 /* 目录抽屉 */
 #toc-panel {
   position: fixed; top: 0; bottom: 0; left: 0; width: 300px; max-width: 80vw; z-index: 20;
@@ -328,6 +305,17 @@ body.nav-on #progress { bottom: calc(68px + var(--safe-bottom)); }
   padding: 12px 14px; border-bottom: 1px solid var(--border); font-weight: 600; color: var(--text);
 }
 #toc-list { list-style: none; overflow-y: auto; flex: 1; padding: 6px 0; }
+#toc-list:has(.page-toc-grid) { padding: 0; }
+.page-toc-grid {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
+  padding: 12px 14px;
+}
+.page-toc-btn {
+  padding: 8px 0; border: 1px solid var(--border2); border-radius: var(--radius-s);
+  background: var(--btn); color: var(--item); font-size: 13px; cursor: pointer;
+}
+.page-toc-btn:hover { background: var(--btn-hover); }
+.page-toc-btn.now { background: var(--accent); color: #fff; border-color: var(--accent); }
 #toc-list li {
   padding: 9px 16px; cursor: pointer; color: var(--item); font-size: 13px; line-height: 1.5;
   border-left: 3px solid transparent; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -370,7 +358,6 @@ body.nav-on #progress { bottom: calc(68px + var(--safe-bottom)); }
   transition: opacity .25s var(--ease), bottom .25s ease;
 }
 #read-progress.on { opacity: 1; }
-body.nav-on #read-progress { bottom: calc(58px + var(--safe-bottom)); }
 #read-progress-fill {
   height: 100%; width: 0%; background: var(--accent);
   transition: width .12s linear;

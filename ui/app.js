@@ -22,7 +22,6 @@ const readingEl = document.getElementById('reading');
 const modeTabEl = document.getElementById('mode-tab');
 const modeScrollBtn = document.getElementById('mode-scroll');
 const modeFlipBtn = document.getElementById('mode-flip');
-const navEl = document.getElementById('page-nav');
 const pageModeEl = document.getElementById('page-mode');
 const pageSingleBtn = document.getElementById('page-single');
 const pageDoubleBtn = document.getElementById('page-double');
@@ -72,6 +71,8 @@ const fontPlusBtn = document.getElementById('font-plus');
 const fontFamilyBtn = document.getElementById('font-family');
 const tocPanelEl = document.getElementById('toc-panel');
 const tocListEl = document.getElementById('toc-list');
+const tocPanelTitleEl = document.getElementById('toc-panel-title');
+const pageNavBtnEl = document.getElementById('page-nav-btn');
 const tocCloseBtn = document.getElementById('toc-close');
 
 let cwd = '';
@@ -1097,9 +1098,6 @@ function onTextGeom(ch, geom) {
 }
 
 function buildTextNav() {
-  navEl.innerHTML = '';
-  navEl.classList.remove('show');
-  document.body.classList.remove('nav-on');
   // 文字书不做页码/章节导航条：按页跳转用不到，目录已足够；
   // 也避免大书（如 8000+ 章）生成数万格子的性能问题。
   textNavBuilt = flipOn ? Math.max(1, textTotalPages || 1) : (epubMeta ? epubMeta.spine.length : 0);
@@ -1111,23 +1109,6 @@ function updateTextNavSel() {
   updateReadingChapterTitle();
   updateWindowTitle();
   return;
-  /* 原实现保留注释：若恢复文字书导航，按 dataset.idx 遍历格子
-  const cells = navEl.children;
-  if (flipOn) {
-    const cur = textCol;
-    const start = doublePage ? Math.floor(cur / 2) * 2 : cur;
-    for (let i = 0; i < cells.length; i++) {
-      cells[i].classList.toggle('now', doublePage ? (i === start || i === start + 1) : i === cur);
-    }
-  } else {
-    const cur = currentStripIndex();
-    for (let i = 0; i < cells.length; i++) cells[i].classList.toggle('now', i === cur);
-  }
-  const nowCell = navEl.querySelector('.nav-cell.now');
-  if (nowCell && !navHovered) {
-    navEl.scrollTo({ left: nowCell.offsetLeft - (navEl.clientWidth - nowCell.clientWidth) / 2, behavior: 'auto' });
-  }
-  */
 }
 
 async function buildTextFlip() {
@@ -1336,12 +1317,20 @@ function updateTocSel() {
   if (li) li.classList.add('now');
 }
 function openTocPanel() {
-  if (!textBook) return;
-  buildTocPanel();
-  tocPanelEl.classList.add('show');
-  updateTocSel();
-  // 当前章若已加载，请 reader 实测锚点列号，让高亮精确到条目
-  if (textLoaded.has(textCurChapter)) requestTocAnchorCols(textCurChapter);
+  if (focus !== 'strip') return;
+  if (textBook) {
+    tocPanelTitleEl.textContent = '目录';
+    buildTocPanel();
+    tocPanelEl.classList.add('show');
+    updateTocSel();
+    // 当前章若已加载，请 reader 实测锚点列号，让高亮精确到条目
+    if (textLoaded.has(textCurChapter)) requestTocAnchorCols(textCurChapter);
+  } else {
+    tocPanelTitleEl.textContent = '页码';
+    if (!tocListEl.querySelector('.page-toc-grid')) buildPageToc();
+    tocPanelEl.classList.add('show');
+    updatePageTocSel();
+  }
 }
 function closeTocPanel() { tocPanelEl.classList.remove('show'); }
 
@@ -1407,10 +1396,6 @@ function setFocus(f) {
   pageModeEl.classList.remove('show');
   themeBtnEl.classList.remove('show');
   readerBackEl.classList.remove('show');
-  if (f !== 'strip') {
-    navEl.classList.remove('show');
-    document.body.classList.remove('nav-on');
-  }
   versionEl.style.display = f === 'strip' ? 'none' : '';
   updateReadingLabel();
   updateProgressBar();
@@ -2434,7 +2419,7 @@ async function enterStripMode(startPage) {
   stripEl.querySelectorAll('.page')[target].scrollIntoView({ block: 'start' });
   highlightIndex(target);
   updateReadingLabel();
-  buildPageNav();
+  buildPageToc();
   loadFlipSettings();
 }
 
@@ -2521,7 +2506,7 @@ async function enterPdfStrip(savedPage) {
   (els[target] || els[0]).scrollIntoView({ block: 'start' });
   highlightIndex(target);
   updateReadingLabel();
-  buildPageNav();
+  buildPageToc();
   loadFlipSettings();
 }
 
@@ -2664,7 +2649,7 @@ async function enterEpubStrip(savedPage, fresh) {
   }
   highlightIndex(currentStripIndex());
   updateReadingLabel();
-  buildPageNav();
+  buildPageToc();
   await loadFlipSettings();
   if (textBook) {
     await waitTextEntryReady();
@@ -2996,7 +2981,7 @@ function scrollToPage(idx, animate) {
     targetEl.scrollIntoView({ block: 'start', inline: 'start' });
   }
   highlightIndex(idx);
-  updateNavSel();
+  updatePageTocSel();
   updateFlipIndicator();
 }
 
@@ -3386,7 +3371,7 @@ async function buildEpubFlipPages() {
   }
   start = Math.min(start, Math.max(0, pages.length - 1));
   pendingVol = null;
-  buildPageNav();
+  buildPageToc();
   scrollToPage(start);
   return start;
 }
@@ -3424,71 +3409,52 @@ async function restoreEpubStrip(from) {
   const target = Math.min(chapter, Math.max(0, pages.length - 1));
   (holderFor(target) || stripEl.querySelector('.page') || stripEl).scrollIntoView({ block: 'start' });
   highlightIndex(target);
-  buildPageNav();
-  updateNavSel();
+  buildPageToc();
+  updatePageTocSel();
   // 文字书：章节内滚动进度等该章 iframe 高度就绪后再精确定位
   pendingScrollRestore = (textBook && frac > 0) ? { chapter: target, frac } : null;
 }
 
-// ---- 悬浮导航条 ----
+// ---- 漫画页码面板（替代底部导航条：按钮 → 面板 → 页码网格）----
 
-async function buildPageNav() {
+async function buildPageToc() {
   if (stripKind === 'epub' && textBook) { buildTextNav(); return; }
-  if (stripKind === 'pdf') {
-    // PDF 也按需求不显示页码导航条（目录/进度已足够），避免空条残留
-    navEl.innerHTML = '';
-    navEl.classList.remove('show');
-    document.body.classList.remove('nav-on');
-    return;
-  }
-  navEl.innerHTML = '';
-  navEl.classList.remove('show');
+  tocListEl.innerHTML = '';
   if (pages.length === 0) return;
-  // 手机版：底部导航一律数字页码，不生成/加载缩略图
+  const grid = document.createElement('div');
+  grid.className = 'page-toc-grid';
   const frag = document.createDocumentFragment();
   for (let i = 0; i < pages.length; i++) {
-    const cell = document.createElement('div');
-    cell.className = 'nav-cell';
-    cell.dataset.idx = String(i);
-    cell.title = `第 ${i + 1} 页`;
-    cell.textContent = String(i + 1);
-    cell.addEventListener('click', () => scrollToPage(i));
-    frag.appendChild(cell);
-  }
-  navEl.appendChild(frag);
-  updateNavSel();
-}
-
-function updateNavSel() {
-  if (stripKind === 'epub' && textBook) { updateTextNavSel(); return; }
-  const idx = currentStripIndex();
-  const isDouble = focus === 'strip' && flipOn && doublePage;
-  const start = isDouble ? Math.floor(idx / 2) * 2 : idx;
-  const cells = navEl.children;
-  for (let i = 0; i < cells.length; i++) {
-    cells[i].classList.toggle('now', isDouble ? (i === start || i === start + 1) : i === idx);
-  }
-  const nowCell = navEl.querySelector('.nav-cell.now');
-  if (nowCell && !navHovered) {
-    navEl.scrollTo({
-      left: nowCell.offsetLeft - (navEl.clientWidth - nowCell.clientWidth) / 2,
-      behavior: 'auto',
+    const b = document.createElement('button');
+    b.className = 'page-toc-btn';
+    b.dataset.idx = String(i);
+    b.textContent = String(i + 1);
+    b.addEventListener('click', () => {
+      scrollToPage(i);
+      closeTocPanel();
     });
+    frag.appendChild(b);
   }
+  grid.appendChild(frag);
+  tocListEl.appendChild(grid);
+  updatePageTocSel();
 }
 
-let navHovered = false; // 鼠标悬停在导航条上时暂停自动居中
-navEl.addEventListener('mouseenter', () => {
-  navHovered = true;
-  clearTimeout(navHideTimer);
-});
-navEl.addEventListener('mouseleave', () => {
-  navHovered = false;
-});
+function updatePageTocSel() {
+  if (textBook) return;
+  const idx = currentStripIndex();
+  const btns = tocListEl.querySelectorAll('.page-toc-btn');
+  for (let i = 0; i < btns.length; i++) btns[i].classList.toggle('now', i === idx);
+  const now = tocListEl.querySelector('.page-toc-btn.now');
+  const grid = tocListEl.querySelector('.page-toc-grid');
+  if (now && grid && tocPanelEl.classList.contains('show')) {
+    tocListEl.scrollTop = grid.offsetTop + now.offsetTop - tocListEl.clientHeight / 2;
+  }
+}
 
 stripEl.addEventListener('scroll', () => {
   highlightIndex(currentStripIndex());
-  updateNavSel();
+  updatePageTocSel();
   // 虚拟化：滚动模式跟随当前位置补/删占位 div（rAF 合并高频滚动）
   if (stripKind === 'epub' && textBook && !flipOn) {
     if (textHolderScrollRaf) cancelAnimationFrame(textHolderScrollRaf);
@@ -3571,34 +3537,6 @@ stripEl.addEventListener('touchmove', (e) => {
 stripEl.addEventListener('touchend', () => { touchFlipOn = false; });
 stripEl.addEventListener('touchcancel', () => { touchFlipOn = false; });
 
-// 底部页码导航条：触屏横滑滚动页码条（WebView 原生横滚不可靠，显式接管），
-// 并防止滑动传到下层阅读区误翻页
-let navTouchX = 0, navTouchScrollLeft = 0, navTouchActive = false;
-navEl.addEventListener('touchstart', (e) => {
-  navTouchX = e.touches[0].clientX;
-  navTouchScrollLeft = navEl.scrollLeft;
-  navTouchActive = true;
-}, { passive: true });
-navEl.addEventListener('touchmove', (e) => {
-  if (!navTouchActive) return;
-  const dx = e.touches[0].clientX - navTouchX;
-  navEl.scrollLeft = navTouchScrollLeft - dx;
-  e.preventDefault();
-}, { passive: false });
-navEl.addEventListener('touchend', () => { navTouchActive = false; });
-navEl.addEventListener('touchcancel', () => { navTouchActive = false; });
-
-// 触摸底部感应区直接呼出页码导航条（触屏没有 mousemove，需显式监听 touchstart）
-window.addEventListener('touchstart', (e) => {
-  if (focus !== 'strip') return;
-  if (stripKind === 'pdf' || (stripKind === 'epub' && textBook)) return;
-  if (e.touches[0].clientY > window.innerHeight * 0.7) {
-    navEl.classList.add('show');
-    document.body.classList.add('nav-on');
-    updateNavSel();
-  }
-}, { passive: true });
-
 // 窗口缩放时，翻页模式跟随视口重新适配并保持位置
 let resizeRaf = 0;
 window.addEventListener('resize', () => {
@@ -3627,26 +3565,6 @@ window.addEventListener('resize', () => {
   });
 });
 
-// 悬浮导航条：鼠标移到屏幕底部感应区时滑出，移开后收起
-let navHideTimer = 0;
-window.addEventListener('mousemove', (e) => {
-  if (focus !== 'strip') return;
-  // 文字书与 PDF 无页码导航条，悬停感应区不再弹出
-  if (stripKind === 'pdf' || (stripKind === 'epub' && textBook)) return;
-  const show = e.clientY > window.innerHeight * 0.7;
-  clearTimeout(navHideTimer);
-  if (show) {
-    navEl.classList.add('show');
-    document.body.classList.add('nav-on');
-    updateNavSel();
-  } else {
-    navHideTimer = setTimeout(() => {
-      navEl.classList.remove('show');
-      document.body.classList.remove('nav-on');
-    }, 150);
-  }
-});
-
 modeScrollBtn.addEventListener('click', () => setReadMode('scroll'));
 modeFlipBtn.addEventListener('click', () => setReadMode('flip'));
 pageSingleBtn.addEventListener('click', () => setPageMode('single'));
@@ -3672,6 +3590,7 @@ themeBtnEl.addEventListener('click', cycleReaderTheme);
 
 // 文字书控件：目录抽屉与字号/字体
 tocBtnEl.addEventListener('click', openTocPanel);
+pageNavBtnEl.addEventListener('click', openTocPanel);
 tocCloseBtn.addEventListener('click', closeTocPanel);
 fontMinusBtn.addEventListener('click', () => changeFontSize(-1));
 fontPlusBtn.addEventListener('click', () => changeFontSize(1));

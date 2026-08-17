@@ -28,6 +28,7 @@
       <div id="mode-tab" hidden>
         <button id="toc-btn" class="text-ctl" title="目录">目录</button>
         <button id="mode-scroll">条漫</button><button id="mode-flip">翻页</button>
+        <button id="page-nav-btn" class="page-ctl" title="页码">页码</button>
         <span class="ctl-sep"></span>
         <button id="font-minus" class="text-ctl" title="减小字号">A−</button>
         <button id="font-family" class="text-ctl" title="切换正文字体">字体</button>
@@ -35,7 +36,6 @@
       </div>
       <div id="preview"></div>
       <div id="strip"></div>
-      <div id="page-nav"></div>
     </main>
   </div>
   <div id="page-mode" hidden>
@@ -44,7 +44,7 @@
   <button id="theme-btn" title="阅读背景"></button>
   <button id="reader-back" title="返回书库"></button>
   <div id="toc-panel">
-    <div id="toc-panel-head"><span>目录</span><button id="toc-close" class="icon-btn">×</button></div>
+    <div id="toc-panel-head"><span id="toc-panel-title">目录</span><button id="toc-close" class="icon-btn">×</button></div>
     <ul id="toc-list"></ul>
   </div>
   <div id="statusbar">
