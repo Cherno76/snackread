@@ -2238,6 +2238,10 @@ fn ebook_volumes_impl(conn: &rusqlite::Connection, dir: &Path) -> Result<Vec<Ebo
     if !book_files.is_empty() {
         for (name, p, ext) in book_files {
             let vpath = norm_path(&p);
+            // 注册分卷书目记录：避免启动清理把未打开过的分卷解包缓存当孤儿删掉
+            if ext == "epub" || ext == "txt" {
+                let _ = db::ensure_book(conn, &vpath, if ext == "epub" { "epub" } else { "txt" });
+            }
             let pos = pos_of(&vpath);
             let thumb = custom_cover(&vpath).or_else(|| {
                 if ext == "epub" {
@@ -3566,6 +3570,17 @@ fn parse_txt_book(src: &Path, base: &Path) -> Result<EpubMeta, String> {
 #[tauri::command]
 fn open_epub(app: tauri::AppHandle, path: String) -> Result<EpubMeta, String> {
     let src = PathBuf::from(&path);
+    // 注册书目记录：让该 EPUB 的解包缓存在启动清理时被保留
+    let is_txt = src
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("txt"))
+        .unwrap_or(false);
+    {
+        let state = app.state::<db::Db>();
+        let conn = state.0.lock().unwrap();
+        let _ = db::ensure_book(&conn, &norm_path(&src), if is_txt { "txt" } else { "epub" });
+    }
     let base = epub_cache_dir().join(epub_cache_key(&src));
     // 先更新 book:// 的服务根，再走缓存：否则第二次打开会拿到旧书内容
     *app.state::<BookState>().0.lock().unwrap() = Some(base.clone());
@@ -3578,11 +3593,6 @@ fn open_epub(app: tauri::AppHandle, path: String) -> Result<EpubMeta, String> {
         let _ = fs::remove_dir_all(&base);
     }
     fs::create_dir_all(&base).map_err(|e| e.to_string())?;
-    let is_txt = src
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.eq_ignore_ascii_case("txt"))
-        .unwrap_or(false);
     if is_txt {
         parse_txt_book(&src, &base)
     } else {
