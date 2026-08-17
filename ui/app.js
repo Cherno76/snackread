@@ -53,7 +53,8 @@ function titleBarStatus() {
     barCellEl.textContent = cell;
   }
   if (battery >= 0 && battery <= 100) {
-    batFillEl.style.width = battery + '%';
+    // 减去左侧 1.5px 内边距，保证填色右边缘不溢出电池边框
+    batFillEl.style.width = `calc(${battery}% - 1.5px)`;
     batPctEl.textContent = String(battery);
     batEl.classList.toggle('low', battery <= 20);
     // 电量条覆盖到文字时用白字保证对比度
