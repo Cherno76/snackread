@@ -11,7 +11,9 @@
 - ✅ Phase 2 最小可跑：Android 工程已生成（`src-tauri/gen/android`），
   后端路径已适配到应用内部存储（`/data/user/0/com.cherno.cshow_gui/files`），
   APK 构建成功：`src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`
-- ⏳ 待真机验证：手机开 USB 调试后 `adb install -r <apk>`
+- ✅ 真机验证（2026-08-17，NX769J / Android 16）：应用已安装并成功启动，
+  应用内部存储工作目录自动创建（`cshow-work/`：SQLite 库 + `Books/` + `epub/` + `thumbs/`），
+  无崩溃日志
 - ⏳ Phase 3 触摸交互适配（hover→tap、导入入口）未开始
 
 ## 1. 可行性分析
