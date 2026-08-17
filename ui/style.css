@@ -17,6 +17,7 @@
   /* Android/iOS 系统栏安全区（edge-to-edge 时 WebView 延伸到系统栏下方） */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --titlebar-h: 34px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -66,11 +67,46 @@ body {
   padding-top: var(--safe-top);
   padding-bottom: var(--safe-bottom);
 }
+/* 顶部标题栏：不透明固定通栏，显示应用名 + 桌面版窗口标题信息 */
+#titlebar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 45;
+  height: calc(var(--titlebar-h) + var(--safe-top));
+  padding: var(--safe-top) 14px 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: var(--muted); background: var(--sidebar);
+  border-bottom: 1px solid var(--border);
+  pointer-events: none;
+  transition: opacity .2s var(--ease);
+}
+#titlebar-text {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 92%;
+}
+/* 阅读时标题栏与底部状态栏跟随控件显隐 */
+body.reading #titlebar,
+body.reading #statusbar {
+  opacity: 0; pointer-events: none;
+}
+body.reading.ctl-on #titlebar,
+body.reading.ctl-on #statusbar {
+  opacity: 1;
+}
+/* 控件呼出时标题栏占据顶部，阅读控件下移避开 */
+body.reading.ctl-on #mode-tab,
+body.reading.ctl-on #page-mode,
+body.reading.ctl-on #theme-btn,
+body.reading.ctl-on #reader-back {
+  top: calc(10px + var(--safe-top) + var(--titlebar-h));
+}
+body.reading.ctl-on #toc-panel {
+  padding-top: calc(var(--safe-top) + var(--titlebar-h));
+}
 #app { display: flex; }
 #sidebar {
   width: 220px; min-width: 180px; max-width: 320px;
   border-right: 1px solid var(--border);
   display: flex; flex-direction: column; background: var(--sidebar);
+  padding-top: calc(var(--titlebar-h) + var(--safe-top));
 }
 #favorites { border-bottom: 1px solid var(--border); }
 .fav-title {

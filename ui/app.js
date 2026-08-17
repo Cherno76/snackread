@@ -18,6 +18,8 @@ const previewEl = document.getElementById('preview');
 const stripEl = document.getElementById('strip');
 const versionEl = document.getElementById('version');
 const statusbarEl = document.getElementById('statusbar');
+const titlebarEl = document.getElementById('titlebar');
+const titlebarTextEl = document.getElementById('titlebar-text');
 const progressEl = document.getElementById('progress');
 const readingEl = document.getElementById('reading');
 const modeTabEl = document.getElementById('mode-tab');
@@ -1406,7 +1408,9 @@ function setFocus(f) {
   themeBtnEl.classList.remove('show');
   readerBackEl.classList.remove('show');
   versionEl.style.display = f === 'strip' ? 'none' : '';
-  statusbarEl.style.display = f === 'strip' ? 'none' : 'flex';
+  // 阅读：标题栏/底部状态栏默认隐藏，随控件呼出
+  document.body.classList.toggle('reading', f === 'strip');
+  document.body.classList.remove('ctl-on');
   updateReadingLabel();
   updateProgressBar();
 }
@@ -1502,6 +1506,7 @@ function computeWindowTitle() {
 
 function updateWindowTitle() {
   const t = computeWindowTitle();
+  titlebarTextEl.textContent = t;
   if (t !== winTitleCache) {
     winTitleCache = t;
     setWindowTitle(t);
@@ -3584,18 +3589,27 @@ let controlsHideTimer = 0;
 function hideReadingControlsSoon(ms) {
   clearTimeout(controlsHideTimer);
   controlsHideTimer = setTimeout(() => {
-    modeTabEl.classList.remove('show');
-    pageModeEl.classList.remove('show');
-    themeBtnEl.classList.remove('show');
-    readerBackEl.classList.remove('show');
+    hideReadingControls();
   }, ms);
 }
 function hideReadingControlsNow() {
   clearTimeout(controlsHideTimer);
+  hideReadingControls();
+}
+// 控件与标题栏/底部状态栏同步显隐
+function showReadingControls() {
+  modeTabEl.classList.add('show');
+  pageModeEl.classList.add('show');
+  themeBtnEl.classList.add('show');
+  readerBackEl.classList.add('show');
+  document.body.classList.add('ctl-on');
+}
+function hideReadingControls() {
   modeTabEl.classList.remove('show');
   pageModeEl.classList.remove('show');
   themeBtnEl.classList.remove('show');
   readerBackEl.classList.remove('show');
+  document.body.classList.remove('ctl-on');
 }
 let touchActive = false; // 触摸手势进行中：抑制合成的鼠标事件，避免滑动翻页时呼出控件
 window.addEventListener('touchstart', () => { touchActive = true; }, { passive: true });
@@ -3604,10 +3618,7 @@ window.addEventListener('touchcancel', () => { touchActive = false; });
 window.addEventListener('mousemove', () => {
   if (focus !== 'strip') return;
   if (touchActive) return; // 触摸手势中的合成 mousemove 不算
-  modeTabEl.classList.add('show');
-  pageModeEl.classList.add('show');
-  themeBtnEl.classList.add('show');
-  readerBackEl.classList.add('show');
+  showReadingControls();
   hideReadingControlsSoon(3000);
 });
 // 轻点检测：位移 <10px 且 <500ms 才算轻点，才呼出控件
@@ -3623,10 +3634,7 @@ window.addEventListener('touchmove', (e) => {
 window.addEventListener('touchend', () => {
   if (focus !== 'strip') return;
   if (tapMoved || Date.now() - tapStartT > 500) return; // 滑动/长按不呼出
-  modeTabEl.classList.add('show');
-  pageModeEl.classList.add('show');
-  themeBtnEl.classList.add('show');
-  readerBackEl.classList.add('show');
+  showReadingControls();
   hideReadingControlsSoon(3000);
 }, { passive: true });
 modeTabEl.addEventListener('mouseenter', () => clearTimeout(controlsHideTimer));
