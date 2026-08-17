@@ -435,14 +435,6 @@ body {
   padding: 8px 14px 12px;
 }
 #lib-state { font-size: 12px; color: var(--muted); }
-#lib-workdir {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 14px 14px;
-}
-#lib-workdir-path {
-  flex: 1; min-width: 0; font-size: 12px; color: var(--muted);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
 /* 图标视图：侧栏扩展为全窗口，列表区换成缩略图网格 */
 #sidebar.expanded {
   position: fixed; inset: 0; width: 100%; max-width: 100%; z-index: 14;

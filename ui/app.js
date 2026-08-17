@@ -1764,14 +1764,10 @@ const libPathEl = document.getElementById('lib-path');
 const libDirsEl = document.getElementById('lib-dirs');
 const libAddEl = document.getElementById('lib-add');
 const libStateEl = document.getElementById('lib-state');
-const libWorkdirPathEl = document.getElementById('lib-workdir-path');
-const libWorkdirChangeEl = document.getElementById('lib-workdir-change');
 const libApiKeyEl = document.getElementById('lib-apikey-input');
 const libApiKeySaveEl = document.getElementById('lib-apikey-save');
 const libApiKeyStateEl = document.getElementById('lib-apikey-state');
 let libBrowsePath = '';
-let libWorkDir = '';
-let workdirMode = false; // 对话框处于“选择工作目录”模式
 
 libGearEl.appendChild(gearIconEl());
 
@@ -1805,8 +1801,6 @@ libApiKeyEl.addEventListener('keydown', (e) => {
 
 function openLibDialog() {
   libBrowsePath = cwd || (favorites[0] && favorites[0].path) || '/';
-  workdirMode = false;
-  refreshWorkDirDisplay();
   loadApiKeyInput();
   renderLibList();
   renderLibDirs();
@@ -1815,15 +1809,6 @@ function openLibDialog() {
 
 function closeLibDialog() {
   libDialogEl.hidden = true;
-}
-
-async function refreshWorkDirDisplay() {
-  try {
-    libWorkDir = await invoke('get_work_dir');
-  } catch { /* 忽略 */ }
-  libWorkdirPathEl.textContent = libWorkDir || '未设置';
-  libWorkdirPathEl.title = libWorkDir;
-  libWorkdirChangeEl.textContent = workdirMode ? '完成' : '更换';
 }
 
 function renderLibList() {
@@ -1936,7 +1921,7 @@ async function renderLibDirs() {
   libPathEl.textContent = libBrowsePath;
   libPathEl.title = libBrowsePath;
   libDirsEl.innerHTML = '';
-  libAddEl.textContent = workdirMode ? '设为工作目录' : '添加此文件夹';
+  libAddEl.textContent = '添加此文件夹';
   let entries = [];
   try {
     entries = await invoke('list_dir', { path: libBrowsePath });
@@ -1952,8 +1937,8 @@ async function renderLibDirs() {
     libDirsEl.appendChild(li);
   }
   const inLib = favorites.some(f => f.path === libBrowsePath);
-  libStateEl.textContent = inLib ? (workdirMode ? '' : '已在书库') : '';
-  libAddEl.style.display = (!workdirMode && inLib) ? 'none' : '';
+  libStateEl.textContent = inLib ? '已在书库' : '';
+  libAddEl.style.display = inLib ? 'none' : '';
 }
 
 libGearEl.addEventListener('click', openLibDialog);
@@ -2104,15 +2089,6 @@ libUpEl.addEventListener('click', () => {
   }
 });
 libAddEl.addEventListener('click', async () => {
-  if (workdirMode) {
-    try {
-      libWorkDir = await invoke('set_work_dir', { path: libBrowsePath });
-    } catch { /* 设置失败忽略 */ }
-    workdirMode = false;
-    await refreshWorkDirDisplay();
-    renderLibDirs();
-    return;
-  }
   await invoke('toggle_favorite', { path: libBrowsePath }).catch(() => {});
   await refreshFavorites();
   renderLibList();
@@ -2124,18 +2100,6 @@ libAddEl.addEventListener('click', async () => {
     libGridLibEntries = entries.slice();
     renderLibBookPage();
   }
-});
-
-libWorkdirChangeEl.addEventListener('click', () => {
-  workdirMode = !workdirMode;
-  if (workdirMode) {
-    libBrowsePath = libWorkDir || cwd || '/';
-    libStateEl.textContent = '选择工作目录（EPUB 解包与缩略图存放处）';
-  } else {
-    libStateEl.textContent = '';
-  }
-  refreshWorkDirDisplay();
-  renderLibDirs();
 });
 
 async function generateVolumeThumb(v, holder) {
