@@ -528,8 +528,9 @@ struct MetaPreset {
     name: String,
 }
 
-/// 规范化书名：去括号内容、去空白，转小写（用于预置库匹配）
+/// 规范化书名：先转简体，再去括号内容、去空白、转小写（用于预置库匹配）
 fn norm_title_key(s: &str) -> String {
+    let s = zhconv::zhconv(s, zhconv::Variant::ZhCN);
     let mut out = String::new();
     let mut depth = 0i32;
     for c in s.trim().chars() {

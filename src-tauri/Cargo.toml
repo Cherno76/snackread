@@ -1,6 +1,6 @@
 [package]
 name = "cshow-gui"
-version = "0.4.71"
+version = "0.4.72"
 description = "cshow 的 GUI 版：条漫丝滑度实验"
 edition = "2021"
 
@@ -29,6 +29,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 encoding_rs = "0.8"
 regex = "1"
 base64 = "0.22"
+zhconv = "0.4.1"
 
 [dev-dependencies]
 sha2 = "0.10"
