@@ -1878,6 +1878,34 @@ fn get_work_dir() -> String {
     norm_path(&work_dir())
 }
 
+/// Android 一次性导入：把 /sdcard/Download/mig-tmp 里暂存的迁移数据库与封面
+/// 复制进工作目录（应用自身有存储权限，替代需要 adb run-as 的写入）。
+/// 导入完成后删除暂存目录；没有暂存文件时为空操作。
+#[cfg(target_os = "android")]
+fn import_staged_migration(work: &Path) {
+    let staged = PathBuf::from("/sdcard/Download/mig-tmp");
+    let staged_db = staged.join("library.sqlite3");
+    if staged_db.is_file() {
+        let _ = fs::create_dir_all(work);
+        if fs::copy(&staged_db, work.join("library.sqlite3")).is_ok() {
+            // 新库是干净的单文件，删除旧 WAL/SHM 避免冲突
+            let _ = fs::remove_file(work.join("library.sqlite3-wal"));
+            let _ = fs::remove_file(work.join("library.sqlite3-shm"));
+        }
+    }
+    let staged_covers = staged.join("covers");
+    if staged_covers.is_dir() {
+        let dst = work.join("covers");
+        let _ = fs::create_dir_all(&dst);
+        if let Ok(rd) = fs::read_dir(&staged_covers) {
+            for e in rd.flatten() {
+                let _ = fs::copy(e.path(), dst.join(e.file_name()));
+            }
+        }
+    }
+    let _ = fs::remove_dir_all(&staged);
+}
+
 #[tauri::command]
 fn set_work_dir(path: String) -> Result<String, String> {
     let p = PathBuf::from(&path);
@@ -4819,6 +4847,9 @@ pub fn run() {
     env_logger::init();
     // 打开工作目录下的 SQLite 数据库（书籍信息/书库/位置/设置/应用状态统一存这里）
     let work = work_dir();
+    // Android：先把暂存的元数据迁移导入（数据库 + 封面），再打开库
+    #[cfg(target_os = "android")]
+    import_staged_migration(&work);
     let conn = db::open(&work).expect("打开书库数据库失败");
     // 一次性迁移旧数据（.cshow / favorites / 应用配置 → DB），备份后删除旧文件
     if let Err(e) = migrate_legacy_to_db(&conn, &work) {
