@@ -17,6 +17,7 @@ const libEyeEl = document.getElementById('lib-eye');
 const previewEl = document.getElementById('preview');
 const stripEl = document.getElementById('strip');
 const versionEl = document.getElementById('version');
+const statusbarEl = document.getElementById('statusbar');
 const progressEl = document.getElementById('progress');
 const readingEl = document.getElementById('reading');
 const modeTabEl = document.getElementById('mode-tab');
@@ -1405,6 +1406,7 @@ function setFocus(f) {
   themeBtnEl.classList.remove('show');
   readerBackEl.classList.remove('show');
   versionEl.style.display = f === 'strip' ? 'none' : '';
+  statusbarEl.style.display = f === 'strip' ? 'none' : 'flex';
   updateReadingLabel();
   updateProgressBar();
 }
