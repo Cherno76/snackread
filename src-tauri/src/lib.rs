@@ -21,9 +21,23 @@ fn norm_path(p: &Path) -> String {
 
 /// 用户配置目录：macOS ~/Library/Application Support，Windows %APPDATA%
 fn app_config_dir() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")))
-        .join("cshow-gui")
+    #[cfg(target_os = "android")]
+    let base = android_home().join(".config");
+    #[cfg(not(target_os = "android"))]
+    let base = dirs::config_dir()
+        .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")));
+    base.join("cshow-gui")
+}
+
+/// Android 应用内部存储根目录：/data/user/0/<包名>/files
+/// （Tauri Android 运行时不保证设置 $HOME，因此给出确定性的兜底路径）
+#[cfg(target_os = "android")]
+fn android_home() -> PathBuf {
+    std::env::var("HOME")
+        .ok()
+        .filter(|h| !h.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/data/user/0/com.cherno.cshow_gui/files"))
 }
 
 #[derive(Serialize)]
@@ -1709,6 +1723,11 @@ fn initial_dir(state: tauri::State<'_, db::Db>) -> String {
             return saved.replace('\\', "/");
         }
     }
+    #[cfg(target_os = "android")]
+    {
+        return norm_path(&android_home());
+    }
+    #[cfg(not(target_os = "android"))]
     dirs::home_dir()
         .map(|p| norm_path(&p))
         .unwrap_or_else(|| "/".into())
@@ -1741,6 +1760,11 @@ fn configured_work_dir() -> Option<PathBuf> {
 }
 
 fn default_work_dir() -> PathBuf {
+    #[cfg(target_os = "android")]
+    {
+        android_home().join("cshow-work")
+    }
+    #[cfg(not(target_os = "android"))]
     dirs::document_dir()
         .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")))
         .join("cshow-work")
@@ -1828,6 +1852,9 @@ fn work_dir() -> PathBuf {
     migrate_old_cache(&dir);
     let _ = fs::create_dir_all(dir.join("epub"));
     let _ = fs::create_dir_all(dir.join("thumbs"));
+    // Android：预创建书籍导入目录（用户通过 USB/文件管理器把书放进这里）
+    #[cfg(target_os = "android")]
+    let _ = fs::create_dir_all(dir.join("Books"));
     if let Ok(mut g) = WORK_DIR.lock() {
         *g = Some(dir.clone());
     }

@@ -4,6 +4,10 @@ version = "0.4.36"
 description = "cshow 的 GUI 版：条漫丝滑度实验"
 edition = "2021"
 
+[lib]
+name = "cshow_gui"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
