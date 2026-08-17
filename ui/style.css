@@ -92,7 +92,7 @@ body {
 #bar-wifi[hidden], #bar-cell[hidden] { display: none; }
 /* 电池图标：外框 + 内部电量条 + 内部百分比 */
 .bat {
-  position: relative; width: 27px; height: 14px;
+  position: relative; width: 23px; height: 14px;
   border: 1.5px solid var(--muted2); border-radius: 4.5px;
   display: flex; align-items: center; justify-content: center;
 }
