@@ -1457,6 +1457,12 @@ function setFocus(f) {
   // 阅读：标题栏/底部状态栏默认隐藏，随控件呼出
   document.body.classList.toggle('reading', f === 'strip');
   document.body.classList.remove('ctl-on');
+  if (f !== 'strip') {
+    // 退出阅读：清空标题栏里的书名/卷信息，回到纯应用名
+    winTitleBook = '';
+    winTitleVol = '';
+    updateWindowTitle();
+  }
   updateReadingLabel();
   updateProgressBar();
 }
