@@ -292,6 +292,13 @@ body {
 #mode-tab .page-ctl { display: none; }
 #mode-tab:not(.text-book) .page-ctl { display: inline-flex; }
 /* 目录抽屉 */
+#toc-backdrop {
+  position: fixed; inset: 0; z-index: 19;
+  background: rgba(0,0,0,.25);
+  opacity: 0; pointer-events: none;
+  transition: opacity .25s var(--ease);
+}
+#toc-backdrop.show { opacity: 1; pointer-events: auto; }
 #toc-panel {
   position: fixed; top: 0; bottom: 0; left: 0; width: 300px; max-width: 80vw; z-index: 20;
   background: var(--dialog); border-right: 1px solid var(--border);

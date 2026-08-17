@@ -73,6 +73,7 @@ const tocPanelEl = document.getElementById('toc-panel');
 const tocListEl = document.getElementById('toc-list');
 const tocPanelTitleEl = document.getElementById('toc-panel-title');
 const pageNavBtnEl = document.getElementById('page-nav-btn');
+const tocBackdropEl = document.getElementById('toc-backdrop');
 const tocCloseBtn = document.getElementById('toc-close');
 
 let cwd = '';
@@ -1322,6 +1323,7 @@ function openTocPanel() {
     tocPanelTitleEl.textContent = '目录';
     buildTocPanel();
     tocPanelEl.classList.add('show');
+    tocBackdropEl.hidden = false;
     updateTocSel();
     // 当前章若已加载，请 reader 实测锚点列号，让高亮精确到条目
     if (textLoaded.has(textCurChapter)) requestTocAnchorCols(textCurChapter);
@@ -1329,10 +1331,15 @@ function openTocPanel() {
     tocPanelTitleEl.textContent = '页码';
     if (!tocListEl.querySelector('.page-toc-grid')) buildPageToc();
     tocPanelEl.classList.add('show');
+    tocBackdropEl.hidden = false;
     updatePageTocSel();
   }
 }
-function closeTocPanel() { tocPanelEl.classList.remove('show'); }
+function closeTocPanel() {
+  tocPanelEl.classList.remove('show');
+  tocBackdropEl.hidden = true;
+}
+tocBackdropEl.addEventListener('click', closeTocPanel);
 
 function updateReadingChapterTitle() {
   if (!textBook || !epubMeta || focus !== 'strip') return;
