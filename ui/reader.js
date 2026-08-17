@@ -311,6 +311,30 @@
     parent.postMessage({ cshowWheel: e.deltaX }, '*');
   }, { passive: false });
 
+  // 手机触摸：翻页模式横向滑动 → 转交父窗口统一按整页翻
+  var touchX = null, touchY = null, touchHoriz = false;
+  document.addEventListener('touchstart', function (e) {
+    if (state.mode !== 'flip') return;
+    var t = e.touches[0];
+    touchX = t.clientX; touchY = t.clientY; touchHoriz = false;
+  }, { passive: true });
+  document.addEventListener('touchmove', function (e) {
+    if (state.mode !== 'flip' || touchX === null) return;
+    var t = e.touches[0];
+    var dx = t.clientX - touchX;
+    var dy = t.clientY - touchY;
+    touchX = t.clientX; touchY = t.clientY;
+    if (!touchHoriz) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      if (Math.abs(dx) > Math.abs(dy)) touchHoriz = true;
+      else { touchX = null; return; } // 纵向滑动：交给系统滚动
+    }
+    e.preventDefault();
+    parent.postMessage({ cshowWheel: -dx }, '*'); // 手指左滑 = 下一页
+  }, { passive: false });
+  document.addEventListener('touchend', function () { touchX = null; });
+  document.addEventListener('touchcancel', function () { touchX = null; });
+
   function boot() {
     applyStyle();
     if (state.mode === 'flip') buildWrap();

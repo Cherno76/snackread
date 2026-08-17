@@ -2069,32 +2069,6 @@ fn save_thumb(path: String, data: Vec<u8>) -> Result<String, String> {
     Ok(norm_path(&out))
 }
 
-/// 导航条页缩略图：返回/生成约 128px 宽的缩略图缓存（懒生成），
-/// 避免漫画导航小格子直接加载整张原图（内存/解码浪费）
-fn make_page_thumb_in(src: &Path, dir: &Path) -> Option<String> {
-    if !src.is_file() {
-        return None;
-    }
-    let out = dir.join(format!("{}.png", thumb_key(src)));
-    if out.is_file() {
-        return Some(norm_path(&out));
-    }
-    let img = image::open(src).ok()?;
-    let w = 128u32;
-    let h = ((img.height() as u64 * w as u64) / (img.width() as u64).max(1)).max(1) as u32;
-    let thumb = img.resize(w, h, image::imageops::FilterType::Triangle);
-    fs::create_dir_all(dir).ok()?;
-    thumb.save(&out).ok()?;
-    Some(norm_path(&out))
-}
-
-#[tauri::command]
-fn page_thumb(path: String) -> Result<Option<String>, String> {
-    let src = PathBuf::from(&path);
-    let dir = thumb_cache_dir().join("nav");
-    Ok(make_page_thumb_in(&src, &dir))
-}
-
 /// 设置一本书的自定义封面（data 为图片文件字节），返回封面缓存路径
 #[tauri::command]
 fn set_book_cover(
@@ -2632,6 +2606,9 @@ fn emit_epub_progress(app: &tauri::AppHandle, done: usize, total: usize) {
 const READER_CSS: &str = include_str!("../../ui/reader.css");
 const READER_JS: &str = include_str!("../../ui/reader.js");
 /// 章节页注入 reader 样式/脚本（绝对 book:// 地址，规避 EPUB <base> 标签的干扰）
+#[cfg(target_os = "android")]
+const READER_INJECT: &str = "<link rel=\"stylesheet\" href=\"http://book.localhost/__cshow_reader.css\"><script src=\"http://book.localhost/__cshow_reader.js\"></script>";
+#[cfg(not(target_os = "android"))]
 const READER_INJECT: &str = "<link rel=\"stylesheet\" href=\"book://localhost/__cshow_reader.css\"><script src=\"book://localhost/__cshow_reader.js\"></script>";
 
 /// book:// 章节页的 CSP：默认禁内联脚本，仅放行两个特例——
@@ -4801,25 +4778,6 @@ mod tests {
     }
 
     #[test]
-    fn page_thumb_generates_cached_thumb() {
-        let base = std::env::temp_dir().join(format!("cshow-pthumb-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&base);
-        fs::create_dir_all(&base).unwrap();
-        let src = base.join("p.png");
-        let img = image::RgbaImage::from_pixel(400, 200, image::Rgba([10, 20, 30, 255]));
-        img.save(&src).unwrap();
-        let t = make_page_thumb_in(&src, &base).expect("应生成缩略图");
-        assert!(Path::new(&t).is_file());
-        let saved = image::open(&t).unwrap();
-        assert_eq!(saved.width(), 128);
-        assert_eq!(saved.height(), 64);
-        // 再次调用命中缓存（路径一致）
-        let t2 = make_page_thumb_in(&src, &base).unwrap();
-        assert_eq!(t, t2);
-        let _ = fs::remove_dir_all(&base);
-    }
-
-    #[test]
     fn txt_book_volume_chapter_inline() {
         let base = std::env::temp_dir().join(format!("cshow-txtvol-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
@@ -4973,7 +4931,6 @@ pub fn run() {
             remove_book_cover,
             get_book_cover,
             save_thumb,
-            page_thumb,
             save_cwd,
             save_position,
             read_position,

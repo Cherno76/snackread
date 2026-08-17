@@ -3,6 +3,13 @@ import { renderMarkdown } from './markdown.js';
 pdfjsLib.GlobalWorkerOptions.workerSrc = './vendor/pdfjs/pdf.worker.min.mjs';
 
 const { invoke, convertFileSrc } = window.__TAURI__.core;
+// Android WebView 不支持自定义 scheme，wry 把 book:// 映射为 http://book.localhost；
+// 页面内（iframe/script/img）引用必须用映射后的地址，否则 WebView 报“网页无法打开”
+const BOOK_ORIGIN = /Android/i.test(navigator.userAgent)
+  ? 'http://book.localhost'
+  : 'book://localhost';
+// 触摸设备（手机）：单击卡片直接进入，不做“先选中再进入”的两步操作
+const IS_TOUCH = navigator.maxTouchPoints > 0 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 const sidebarEl = document.getElementById('sidebar');
 const libTabsEl = document.getElementById('lib-tabs');
@@ -698,7 +705,7 @@ function textFrame(ch) {
     frame.dataset.chapter = String(ch);
     let href = epubMeta.spine[ch];
     try { href = decodeURIComponent(href); } catch { /* 保持原样 */ }
-    const url = 'book://localhost/' + href.split('/').map(encodeURIComponent).join('/');
+    const url = BOOK_ORIGIN + '/' + href.split('/').map(encodeURIComponent).join('/');
     let params = 'b=' + epubBookToken + '&c=' + ch;
     if (textBook) {
       params += '&t=' + encodeURIComponent(readerTheme) + '&fs=' + readerFontSize +
@@ -2440,8 +2447,9 @@ async function ensurePdfStrip(en) {
   stripEl.innerHTML = '';
   try {
     pdfDoc = await pdfjsLib.getDocument({ url: convertFileSrc(en.path) }).promise;
-  } catch {
+  } catch (err) {
     pdfDoc = null;
+    console.error('PDF load failed:', en.path, err);
     return;
   }
   pages = [];
@@ -3435,68 +3443,18 @@ async function buildPageNav() {
   navEl.innerHTML = '';
   navEl.classList.remove('show');
   if (pages.length === 0) return;
-  // 缩略图数据源：文件夹图片书全部模式；EPUB 图片书仅翻页模式（一页一图）。
-  // EPUB 图片书滚动模式仍是章节维度，保留章节编号。
-  const useThumbs = stripKind === 'images' || (stripKind === 'epub' && flipOn);
-  let paths = null;
-  if (useThumbs) {
-    if (stripKind === 'images') {
-      paths = pages.map(p => p.path);
-    } else {
-      paths = (flipEpub && flipEpub.paths) || [];
-      if (paths.length !== pages.length) {
-        try {
-          const data = await invoke('epub_pages', { path: stripEpubPath });
-          paths = (data && data.paths) || [];
-        } catch { paths = []; }
-      }
-    }
-    if (!paths || paths.length !== pages.length) {
-      // 拿不到图片路径：不显示导航条
-      document.body.classList.remove('nav-on');
-      return;
-    }
-  }
+  // 手机版：底部导航一律数字页码，不生成/加载缩略图
   const frag = document.createDocumentFragment();
   for (let i = 0; i < pages.length; i++) {
     const cell = document.createElement('div');
     cell.className = 'nav-cell';
     cell.dataset.idx = String(i);
     cell.title = `第 ${i + 1} 页`;
-    if (useThumbs) {
-      const img = document.createElement('img');
-      img.loading = 'lazy';
-      img.dataset.src = paths[i];
-      img.alt = '';
-      cell.appendChild(img);
-    } else {
-      cell.textContent = String(i + 1); // EPUB 图片书滚动模式：章节编号
-    }
+    cell.textContent = String(i + 1);
     cell.addEventListener('click', () => scrollToPage(i));
     frag.appendChild(cell);
   }
   navEl.appendChild(frag);
-  const io = new IntersectionObserver((ents) => {
-    for (const en of ents) {
-      if (!en.isIntersecting) continue;
-      const cell = en.target;
-      const img = cell.querySelector('img');
-      if (img && !img.src) {
-        // 懒加载：后端生成 128px 小图缓存，不再加载原图
-        const src = img.dataset.src;
-        (async () => {
-          try {
-            const t = await invoke('page_thumb', { path: src });
-            img.src = convertFileSrc(t || src);
-          } catch {
-            img.src = convertFileSrc(src);
-          }
-        })();
-      }
-      io.unobserve(cell);
-    }
-  }, { root: navEl, rootMargin: '300px' });
-  for (const cell of navEl.children) io.observe(cell);
   updateNavSel();
 }
 
@@ -3573,7 +3531,7 @@ function handleFlipWheel(dx) {
   }
   if (flipped) {
     flipWheelAccum = 0; // 翻一页后清空累积，避免同一次滑动连翻
-    flipCooldown = now + 800; // 冷却延时，防止误翻
+    flipCooldown = now + 400; // 冷却延时（手机端减半，连翻更跟手），防止误翻
   }
 }
 
@@ -3586,6 +3544,31 @@ stripEl.addEventListener('wheel', (e) => {
   e.preventDefault();
   handleFlipWheel(dx);
 }, { passive: false });
+
+// 手机触摸翻页：翻页模式下横向滑动 = 翻页（阈值/冷却与触控板一致）
+let touchFlipX = 0, touchFlipY = 0, touchFlipLast = 0, touchFlipOn = false;
+stripEl.addEventListener('touchstart', (e) => {
+  if (!flipOn || focus !== 'strip') return;
+  const t = e.touches[0];
+  touchFlipX = t.clientX; touchFlipY = t.clientY; touchFlipLast = t.clientX;
+  touchFlipOn = true;
+}, { passive: true });
+stripEl.addEventListener('touchmove', (e) => {
+  if (!flipOn || focus !== 'strip' || !touchFlipOn) return;
+  const t = e.touches[0];
+  const dx = t.clientX - touchFlipLast;
+  const dy = t.clientY - touchFlipY;
+  touchFlipLast = t.clientX;
+  if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+  if (Math.abs(t.clientX - touchFlipX) < Math.abs(t.clientY - touchFlipY)) {
+    touchFlipOn = false; // 纵向滑动：交给系统滚动
+    return;
+  }
+  e.preventDefault();
+  handleFlipWheel(-dx); // 手指左滑 = 下一页（直觉方向）
+}, { passive: false });
+stripEl.addEventListener('touchend', () => { touchFlipOn = false; });
+stripEl.addEventListener('touchcancel', () => { touchFlipOn = false; });
 
 // 窗口缩放时，翻页模式跟随视口重新适配并保持位置
 let resizeRaf = 0;
@@ -3621,7 +3604,7 @@ window.addEventListener('mousemove', (e) => {
   if (focus !== 'strip') return;
   // 文字书与 PDF 无页码导航条，悬停感应区不再弹出
   if (stripKind === 'pdf' || (stripKind === 'epub' && textBook)) return;
-  const show = e.clientY > window.innerHeight - 70;
+  const show = e.clientY > window.innerHeight * 0.7;
   clearTimeout(navHideTimer);
   if (show) {
     navEl.classList.add('show');
@@ -3682,7 +3665,7 @@ function hideReadingControlsSoon(ms) {
 }
 window.addEventListener('mousemove', (e) => {
   if (focus !== 'strip') return;
-  if (e.clientY <= 70) {
+  if (e.clientY <= window.innerHeight * 0.3) {
     modeTabEl.classList.add('show');
     pageModeEl.classList.add('show');
     themeBtnEl.classList.add('show');
@@ -4552,7 +4535,7 @@ function makeLibCard(b, onOpen) {
   card.addEventListener('click', () => {
     const i = libGridCards.indexOf(b);
     if (i < 0) return;
-    if (i === libGridSel) {
+    if (IS_TOUCH || i === libGridSel) {
       if (libGridOpening) return; // 异步进入期间忽略重复点击
       libGridOpening = true;
       Promise.resolve(onOpen()).finally(() => { libGridOpening = false; });
@@ -4822,7 +4805,7 @@ function makeVolCard(book, v, holders) {
   card.addEventListener('click', () => {
     const i = libGridVols.indexOf(v);
     if (i < 0) return;
-    if (i === libGridSel) {
+    if (IS_TOUCH || i === libGridSel) {
       openVolumeFromLibGrid(book, v); // 单击焦点项 = Enter 直接进入
     } else {
       libGridSel = i;
