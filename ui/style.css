@@ -517,7 +517,6 @@ body.immersive #read-progress {
   border: 1px solid var(--border2); border-radius: var(--radius-m);
   transition: transform .18s var(--ease), box-shadow .18s var(--ease);
 }
-.lib-card.sel .thumb { outline: 2px solid var(--accent); }
 .lib-card .name {
   margin-top: 6px; font-size: 12px; text-align: center; color: var(--item);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
