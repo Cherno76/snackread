@@ -1324,6 +1324,7 @@ function openTocPanel() {
     buildTocPanel();
     tocPanelEl.classList.add('show');
     tocBackdropEl.hidden = false;
+    tocBackdropEl.classList.add('show');
     updateTocSel();
     // 当前章若已加载，请 reader 实测锚点列号，让高亮精确到条目
     if (textLoaded.has(textCurChapter)) requestTocAnchorCols(textCurChapter);
@@ -1332,11 +1333,13 @@ function openTocPanel() {
     if (!tocListEl.querySelector('.page-toc-grid')) buildPageToc();
     tocPanelEl.classList.add('show');
     tocBackdropEl.hidden = false;
+    tocBackdropEl.classList.add('show');
     updatePageTocSel();
   }
 }
 function closeTocPanel() {
   tocPanelEl.classList.remove('show');
+  tocBackdropEl.classList.remove('show');
   tocBackdropEl.hidden = true;
 }
 tocBackdropEl.addEventListener('click', closeTocPanel);
