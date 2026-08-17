@@ -3571,6 +3571,34 @@ stripEl.addEventListener('touchmove', (e) => {
 stripEl.addEventListener('touchend', () => { touchFlipOn = false; });
 stripEl.addEventListener('touchcancel', () => { touchFlipOn = false; });
 
+// 底部页码导航条：触屏横滑滚动页码条（WebView 原生横滚不可靠，显式接管），
+// 并防止滑动传到下层阅读区误翻页
+let navTouchX = 0, navTouchScrollLeft = 0, navTouchActive = false;
+navEl.addEventListener('touchstart', (e) => {
+  navTouchX = e.touches[0].clientX;
+  navTouchScrollLeft = navEl.scrollLeft;
+  navTouchActive = true;
+}, { passive: true });
+navEl.addEventListener('touchmove', (e) => {
+  if (!navTouchActive) return;
+  const dx = e.touches[0].clientX - navTouchX;
+  navEl.scrollLeft = navTouchScrollLeft - dx;
+  e.preventDefault();
+}, { passive: false });
+navEl.addEventListener('touchend', () => { navTouchActive = false; });
+navEl.addEventListener('touchcancel', () => { navTouchActive = false; });
+
+// 触摸底部感应区直接呼出页码导航条（触屏没有 mousemove，需显式监听 touchstart）
+window.addEventListener('touchstart', (e) => {
+  if (focus !== 'strip') return;
+  if (stripKind === 'pdf' || (stripKind === 'epub' && textBook)) return;
+  if (e.touches[0].clientY > window.innerHeight * 0.7) {
+    navEl.classList.add('show');
+    document.body.classList.add('nav-on');
+    updateNavSel();
+  }
+}, { passive: true });
+
 // 窗口缩放时，翻页模式跟随视口重新适配并保持位置
 let resizeRaf = 0;
 window.addEventListener('resize', () => {
