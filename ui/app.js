@@ -4346,6 +4346,13 @@ async function renderLibBookPage() {
   libStatsEl.hidden = false;
   await loadGridMeta();
   libGridBodyEl.innerHTML = '';
+  if (favorites.length === 0) {
+    // 未设置书库：不显示任何当前文件夹的文件
+    libGridCards = [];
+    updateGridStats();
+    libGridBodyEl.innerHTML = '<div style="padding:40px;color:var(--muted)">请设置书库</div>';
+    return;
+  }
   let src = libGridLibEntries.filter(e => e.is_dir || e.is_pdf || e.is_epub || e.is_txt);
   const fav = favorites.find(f => f.path === cwd);
   if (fav && fav.hidden) {
@@ -4362,9 +4369,7 @@ async function renderLibBookPage() {
   if (libGridCards.length === 0) {
     libGridBodyEl.innerHTML = activeTags.size > 0
       ? '<div style="padding:40px;color:var(--muted)">没有匹配此标签的书籍</div>'
-      : (favorites.length === 0
-        ? '<div style="padding:40px;color:var(--muted)">请设置书库</div>'
-        : '<div style="padding:40px;color:var(--muted)">没有书籍</div>');
+      : '<div style="padding:40px;color:var(--muted)">没有书籍</div>';
     return;
   }
   for (const b of libGridCards) {
