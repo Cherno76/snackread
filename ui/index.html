@@ -32,6 +32,7 @@
         <button id="font-minus" class="text-ctl" title="减小字号">A−</button>
         <button id="font-family" class="text-ctl" title="切换正文字体">字体</button>
         <button id="font-plus" class="text-ctl" title="增大字号">A+</button>
+        <button id="margin-btn" class="text-ctl" title="页边距">边距</button>
       </div>
       <div id="preview"></div>
       <div id="strip"></div>
@@ -42,6 +43,16 @@
   </div>
   <button id="theme-btn" title="阅读背景"></button>
   <button id="reader-back" title="返回书库"></button>
+  <div id="margin-backdrop" hidden></div>
+  <div id="margin-panel" hidden>
+    <div id="margin-panel-head"><span>页边距 · 文字书</span><button id="margin-close" class="icon-btn">×</button></div>
+    <div class="margin-row"><label>上</label><input id="margin-top" type="number" min="0" max="120"></div>
+    <div class="margin-row"><label>下</label><input id="margin-bottom" type="number" min="0" max="120"></div>
+    <div class="margin-row"><label>左</label><input id="margin-left" type="number" min="0" max="120"></div>
+    <div class="margin-row"><label>右</label><input id="margin-right" type="number" min="0" max="120"></div>
+    <div class="margin-row"><label>中间距</label><input id="margin-gap" type="number" min="0" max="120"></div>
+    <button id="margin-save">保存</button>
+  </div>
   <div id="titlebar">
     <span id="titlebar-text"><img src="snackread-logo.svg" class="titlebar-logo" alt=""></span>
     <div id="bar-status">
