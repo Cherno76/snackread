@@ -49,7 +49,9 @@
     ff: q.ff || 'system',
     lh: parseFloat(q.lh || '1.7') || 1.7,
     mg: parseInt(q.mg || '28', 10) || 28,
+    mgT: parseInt(q.mgt || '28', 10) || 28,
     mgB: parseInt(q.mgb || '28', 10) || 28,
+    double: false,
     pageW: parseInt(q.pw || '0', 10) || 0,
     pageH: parseInt(q.ph || '0', 10) || 0,
     gap: parseInt(q.g || '24', 10) || 0
@@ -73,9 +75,11 @@
       s.id = 'cshow-reader-style';
       (doc.head || root).appendChild(s);
     }
-    // 视口宽（iframe 内部）：分页容器必须撑满，否则 EPUB 自带的 body max-width 会把列宽算错
-    var vw = window.innerWidth || root.clientWidth || state.pageW || 800;
     var css = '';
+    // 由 iframe 自身视口推算几何：容器宽 = 视口宽 - 左右边距；
+    // 单页一列 = 容器宽；双页两列 = (容器宽 - 列距)/2（保留小数，避免多列合计超宽退化单栏）。
+    // 父窗口只传边距/模式/字号，不再下发列宽，杜绝两侧计算不一致。
+    var containerW = state.mode === 'flip' ? refreshGeometry() : 0;
     css += 'html,body{background:' + t.bg + ' !important;color:' + t.fg + ' !important;margin:0 !important;}';
     css += '[data-cshow-hdr]{display:none !important;}'; // 解包标记的固定页眉/页脚
     css += 'body a{color:' + t.link + ' !important;}';
@@ -100,7 +104,7 @@
       // 翻页模式强制全宽（覆盖 EPUB 的 body max-width），否则列宽按被压缩后的容器算，双页退化成一页
       css += 'html,body{width:100% !important;max-width:none !important;padding:0 !important;}';
       css += '.cshow-pages{';
-      css += 'width:' + Math.max(200, vw - 2 * state.mg) + 'px;';
+      css += 'width:' + containerW + 'px;';
       css += 'margin:0 auto;';
       css += 'column-width:' + state.pageW + 'px;';
       css += 'column-gap:' + state.gap + 'px;';
@@ -114,7 +118,7 @@
       // 横向滚动由父窗口统一翻页（gotoPage 用 scrollLeft 定位）；
       // 用 hidden 而非 auto，避免触控板滚轮原生滚动列容器导致落到半页位置
       css += 'overflow-x:hidden;overflow-y:hidden;';
-      css += 'padding:' + state.mg + 'px 0 ' + state.mgB + 'px;';
+      css += 'padding:' + state.mgT + 'px 0 ' + state.mgB + 'px;';
       css += 'box-sizing:border-box;';
       css += '}';
       // WebKit 多列（已知 bug #25633）对替换元素（img）的尺寸计算不可靠：
@@ -122,7 +126,7 @@
       // 且单靠 img 上的 break-inside 无法解决。
       // 实测绕开方案：把图片放进 flex 容器，或强制撑满容器 + object-fit，
       // WebKit 在这些布局下按自然尺寸/等比完整渲染。
-      var colH = Math.max(120, state.pageH - state.mg - state.mgB); // 列内容高（.cshow-pages 有上下 padding）
+      var colH = Math.max(120, state.pageH - state.mgT - state.mgB); // 列内容高（.cshow-pages 有上下 padding）
       css += '.cshow-imgguard,.cshow-imgpage{-webkit-column-break-inside:avoid;break-inside:avoid;}';
       // 大图（封面等）：容器撑满列内容高、图片 object-fit 等比完整显示、独占一列
       css += '.cshow-imgpage{height:' + colH + 'px;-webkit-column-break-before:always;-webkit-column-break-after:always;break-before:column;break-after:column;}';
@@ -194,10 +198,23 @@
   function reportGeom() {
     if (state.mode !== 'flip') return;
     if (!wrapBuilt) buildWrap();
+    refreshGeometry();
     var pw = state.pageW || wrap.clientWidth || 1;
     var gap = state.gap || 0;
     var pages = Math.max(1, Math.round((wrap.scrollWidth + gap) / (pw + gap)));
     parent.postMessage({ cshowGeom: { chapter: chapter, pages: pages, pageW: pw, gap: gap } }, '*');
+  }
+
+  // 由 iframe 自身视口推算分页几何（列宽/列高），写回 state 供布局与翻页定位使用。
+  function refreshGeometry() {
+    var w = window.innerWidth || root.clientWidth || state.pageW || 800;
+    var h = window.innerHeight || root.clientHeight || state.pageH || 600;
+    var containerW = Math.max(200, w - 2 * state.mg);
+    state.pageH = Math.max(200, h);
+    state.pageW = state.double
+      ? Math.max(1, (containerW - state.gap) / 2)
+      : containerW;
+    return containerW;
   }
 
   function scheduleMeasure() {
@@ -217,10 +234,10 @@
     if (cfg.ff !== undefined) state.ff = cfg.ff;
     if (cfg.lh !== undefined) state.lh = cfg.lh;
     if (cfg.mg !== undefined) state.mg = cfg.mg;
+    if (cfg.mgT !== undefined) state.mgT = cfg.mgT;
     if (cfg.mgB !== undefined) state.mgB = cfg.mgB;
-    if (cfg.pageW !== undefined) state.pageW = cfg.pageW;
-    if (cfg.pageH !== undefined) state.pageH = cfg.pageH;
     if (cfg.gap !== undefined) state.gap = cfg.gap;
+    if (cfg.double !== undefined) state.double = !!cfg.double;
     if (state.mode === 'flip') {
       buildWrap();
       body.style.overflow = 'hidden';
@@ -231,6 +248,13 @@
     guardImages(); // 图可能尚未加载，加载后由 wrap 的 load 监听再处理
     scheduleMeasure();
   }
+
+  // iframe 视口变化（旋转/窗口缩放/iframe 延迟布局完成）：重算列宽页高并重新上报
+  window.addEventListener('resize', function () {
+    if (state.mode !== 'flip') return;
+    applyStyle();
+    scheduleMeasure();
+  });
 
   var scrollAnimToken = 0;
   // 缓动滚动：章节内翻页横向滑动（更慢更柔；新翻页会打断旧动画）

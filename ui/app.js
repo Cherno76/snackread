@@ -595,15 +595,6 @@ function textGap() { return doublePage ? 56 : 0; }
 function textViewportW() {
   return Math.max(1, window.innerWidth || stripEl.clientWidth || 800);
 }
-function textPageW() {
-  const W = textViewportW();
-  const g = textGap();
-  const contentW = Math.max(200, W - 2 * READER_MARGIN);
-  // 双页：精确取 (contentW-gap)/2（可为 .5px），否则 Math.round 四舍五入会让两列合计比容器多 1px，
-  // 触发 CSS 多列「只放得下一列」而退化成整页单栏
-  return doublePage ? Math.max(160, (contentW - g) / 2) : Math.round(contentW);
-}
-function textPageH() { return Math.max(200, stripEl.clientHeight || 600); }
 
 function readerCfg() {
   return {
@@ -612,11 +603,11 @@ function readerCfg() {
     ff: readerFontFamily,
     lh: 1.7,
     mg: READER_MARGIN,
+    mgT: READER_MARGIN,
     mgB: READER_MARGIN_BOTTOM,
-    mode: flipOn ? 'flip' : 'scroll',
-    pageW: textPageW(),
-    pageH: textPageH(),
+    double: doublePage,
     gap: textGap(),
+    mode: flipOn ? 'flip' : 'scroll',
   };
 }
 function sendReaderCfgTo(frame) {
