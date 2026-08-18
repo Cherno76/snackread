@@ -14,6 +14,9 @@ const IS_TOUCH = navigator.maxTouchPoints > 0 || /Android|iPhone|iPad|iPod/i.tes
 const sidebarEl = document.getElementById('sidebar');
 const libTabsEl = document.getElementById('lib-tabs');
 const libEyeEl = document.getElementById('lib-eye');
+const libViewBtnEl = document.getElementById('lib-view');
+let libViewMode = 'grid'; // 书库页视图：grid（缩略图）| list（列表）
+try { libViewMode = localStorage.getItem('libViewMode') === 'list' ? 'list' : 'grid'; } catch { /* 忽略 */ }
 const previewEl = document.getElementById('preview');
 const stripEl = document.getElementById('strip');
 const versionEl = document.getElementById('version');
@@ -1779,6 +1782,42 @@ function updateLibEye() {
   libEyeEl.title = hidden ? '显示已隐藏的文件夹' : '隐藏 eye-off 的文件夹';
   libEyeEl.appendChild(eyeIconEl(hidden));
 }
+
+// ---- 缩略图/列表视图切换 ----
+function gridIconEl() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', '14'); svg.setAttribute('height', '14');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+  svg.innerHTML = '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>' +
+    '<rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>';
+  return svg;
+}
+function listIconEl() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', '14'); svg.setAttribute('height', '14');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+  svg.innerHTML = '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>' +
+    '<circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/>';
+  return svg;
+}
+function updateLibViewBtn() {
+  const list = libViewMode === 'list';
+  libViewBtnEl.title = list ? '切换到缩略图视图' : '切换到列表视图';
+  libViewBtnEl.innerHTML = '';
+  libViewBtnEl.appendChild(list ? gridIconEl() : listIconEl());
+}
+libViewBtnEl.addEventListener('click', () => {
+  libViewMode = libViewMode === 'grid' ? 'list' : 'grid';
+  try { localStorage.setItem('libViewMode', libViewMode); } catch { /* 忽略 */ }
+  updateLibViewBtn();
+  if (libGridBook) renderLibVolPage(libGridBook);
+  else renderLibBookPage();
+});
+updateLibViewBtn();
 
 // 切换当前书库的 eye：隐藏时过滤被标记的书
 libEyeEl.addEventListener('click', async () => {
@@ -4397,8 +4436,10 @@ async function renderLibBookPage() {
   libTitleEl.classList.remove('vol-title');
   libGearEl.hidden = false;
   libStatsEl.hidden = false;
+  libViewBtnEl.hidden = false;
   await loadGridMeta();
   libGridBodyEl.innerHTML = '';
+  libGridBodyEl.classList.toggle('list', libViewMode === 'list');
   if (favorites.length === 0) {
     // 未设置书库：不显示任何当前文件夹的文件
     libGridCards = [];
@@ -4450,6 +4491,8 @@ async function renderLibVolPage(book) {
   libEyeEl.hidden = true;
   libGearEl.hidden = true;
   libStatsEl.hidden = true;
+  libViewBtnEl.hidden = true;
+  libGridBodyEl.classList.remove('list'); // 卷页保持缩略图视图
   tagBarEl.hidden = true;
   // 返回按钮 = 当前书库胶囊（与书库页当前书库 tab 同款：图标 + 名称，蓝底白字）
   libGridBackEl.className = 'lib-tab on grid-back';
@@ -4533,8 +4576,9 @@ async function generateLibGridThumbs(holders) {
 }
 
 function makeLibCard(b, onOpen) {
+  const list = libViewMode === 'list';
   const card = document.createElement('div');
-  card.className = 'lib-card';
+  card.className = 'lib-card' + (list ? ' list' : '');
   card.dataset.path = b.path;
   const img = document.createElement('img');
   img.className = 'thumb';
@@ -4558,32 +4602,19 @@ function makeLibCard(b, onOpen) {
     ev.stopPropagation();
     toggleLibBookEye(b, eye);
   });
-  if (b.is_dir) {
-    // 书文件夹：缩略图左上角刷新缓存按钮
-    const refresh = document.createElement('span');
-    refresh.className = 'refresh-btn';
-    refresh.title = '刷新本书缓存';
-    refresh.appendChild(refreshIconEl());
-    refresh.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      refreshBookCache(b);
-    });
-    card.appendChild(refresh);
-  }
+  const type = !b.is_dir ? (b.is_txt ? 'TXT' : (b.is_epub ? 'EPUB' : (b.is_pdf ? 'PDF' : ''))) : '';
+  const refresh = document.createElement('span');
+  refresh.className = 'refresh-btn';
+  refresh.title = '刷新本书缓存';
+  refresh.appendChild(refreshIconEl());
+  refresh.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    refreshBookCache(b);
+  });
   const thumbWrap = document.createElement('div');
   thumbWrap.className = 'thumb-wrap';
   thumbWrap.appendChild(img);
   thumbWrap.appendChild(makeDonutEl());
-  // 散装电子书：缩略图左上角类型胶囊（TXT/EPUB/PDF）
-  if (!b.is_dir) {
-    const type = b.is_txt ? 'TXT' : (b.is_epub ? 'EPUB' : (b.is_pdf ? 'PDF' : ''));
-    if (type) {
-      const pill = document.createElement('span');
-      pill.className = 'type-pill';
-      pill.textContent = type;
-      thumbWrap.appendChild(pill);
-    }
-  }
   thumbWrap.addEventListener('mouseenter', (e) => {
     const note = (bookMetaMap[b.path] && bookMetaMap[b.path].note) || '';
     if (note) {
@@ -4596,9 +4627,6 @@ function makeLibCard(b, onOpen) {
     if (!hoverTipEl.hidden) positionNoteTip(e);
   });
   thumbWrap.addEventListener('mouseleave', hideNoteTip);
-  card.appendChild(thumbWrap);
-  card.appendChild(label);
-  card.appendChild(cardMeta);
   const edit = document.createElement('span');
   edit.className = 'edit-btn';
   edit.title = '编辑信息';
@@ -4607,8 +4635,41 @@ function makeLibCard(b, onOpen) {
     ev.stopPropagation();
     openMetaDialog(b);
   });
-  card.appendChild(edit);
-  card.appendChild(eye);
+  if (list) {
+    // 列表视图：左缩略图 + 右信息，右上角 类型/刷新/编辑/eye
+    const info = document.createElement('div');
+    info.className = 'card-info';
+    info.appendChild(label);
+    info.appendChild(cardMeta);
+    const corner = document.createElement('div');
+    corner.className = 'card-corner';
+    if (b.is_dir) corner.appendChild(refresh);
+    if (type) {
+      const pill = document.createElement('span');
+      pill.className = 'type-pill';
+      pill.textContent = type;
+      corner.appendChild(pill);
+    }
+    corner.appendChild(edit);
+    corner.appendChild(eye);
+    card.appendChild(thumbWrap);
+    card.appendChild(info);
+    card.appendChild(corner);
+  } else {
+    // 缩略图视图：书文件夹左上角刷新；散装书缩略图左上角类型胶囊
+    if (b.is_dir) card.appendChild(refresh);
+    if (type) {
+      const pill = document.createElement('span');
+      pill.className = 'type-pill';
+      pill.textContent = type;
+      thumbWrap.appendChild(pill);
+    }
+    card.appendChild(thumbWrap);
+    card.appendChild(label);
+    card.appendChild(cardMeta);
+    card.appendChild(edit);
+    card.appendChild(eye);
+  }
   card.addEventListener('click', () => {
     const i = libGridCards.indexOf(b);
     if (i < 0) return;
