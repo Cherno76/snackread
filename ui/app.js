@@ -74,6 +74,7 @@ if (navigator.connection) {
 }
 const progressEl = document.getElementById('progress');
 const readingEl = document.getElementById('reading');
+const readingBarEl = document.getElementById('reading-bar');
 const modeTabEl = document.getElementById('mode-tab');
 const modeScrollBtn = document.getElementById('mode-scroll');
 const modeFlipBtn = document.getElementById('mode-flip');
@@ -1572,7 +1573,7 @@ function updateWindowTitle() {
 // 阅读时底部显示“卷名”；窗口标题用书名（元数据优先）+ 章节/页码
 function updateReadingLabel() {
   if (focus !== 'strip') {
-    readingEl.style.display = 'none';
+    readingBarEl.style.display = 'none';
     return;
   }
   let book = '', vol = '';
@@ -1613,7 +1614,7 @@ function updateReadingLabel() {
   }
   winTitleBook = book;
   winTitleVol = vol;
-  readingEl.style.display = 'block';
+  readingBarEl.style.display = 'flex';
   updateWindowTitle();
 }
 
@@ -3157,6 +3158,7 @@ function applyFlipMode() {
     }
   }
   updateFlipIndicator();
+  if (textBook && !flipOn) progressEl.textContent = ''; // 滚动模式不显示页码
   if (textBook) broadcastReaderCfg(); // 模式/几何变化同步到各章 iframe
 }
 

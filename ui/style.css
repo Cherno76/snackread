@@ -318,7 +318,7 @@ body.reading.ctl-on #toc-panel {
 @keyframes page-turn-in {
   from { opacity: 0; transform: translateX(64px); }
 }
-#version, #progress {
+#version {
   position: fixed; right: 14px; font-size: 12px;
   color: var(--muted); background: var(--pill); padding: 4px 10px;
   border-radius: var(--radius-l); pointer-events: none;
@@ -438,19 +438,23 @@ body.reading.ctl-on #toc-panel {
 #theme-btn.show, #reader-back.show { transform: translateY(0); pointer-events: auto; }
 #theme-btn svg, #reader-back svg { display: block; }
 #theme-btn:hover, #reader-back:hover { color: var(--text); }
-/* 左下阅读状态与右下页码：统一样式（胶囊、字号、颜色、阴影、透明度） */
-#reading, #progress {
-  position: fixed; bottom: calc(12px + var(--safe-bottom)); font-size: 12px;
-  color: var(--muted); background: var(--pill); padding: 4px 10px;
-  border-radius: var(--radius-l); pointer-events: none;
-  box-shadow: var(--shadow-1); opacity: .8;
+/* 左下阅读状态 + 右下页码：合并为底部一整条 */
+#reading-bar {
+  position: fixed; left: 14px; right: 14px; bottom: calc(12px + var(--safe-bottom));
+  display: none; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--pill); border-radius: var(--radius-l);
+  padding: 4px 10px; box-shadow: var(--shadow-1); opacity: .8;
+  pointer-events: none; z-index: 8;
   transition: opacity .25s var(--ease);
 }
-#reading {
-  left: 14px; display: none;
-  max-width: 88vw; white-space: normal; line-height: 1.5;
+#reading, #progress {
+  font-size: 12px; color: var(--muted); line-height: 1.5;
 }
-#progress { right: 14px; }
+#reading {
+  flex: 1; min-width: 0; max-width: 88vw;
+  white-space: normal; overflow-wrap: anywhere;
+}
+#progress { flex-shrink: 0; white-space: nowrap; }
 #read-progress {
   position: fixed; left: 0; right: 0; bottom: var(--safe-bottom); height: 3px; z-index: 9;
   pointer-events: none; opacity: 0;
