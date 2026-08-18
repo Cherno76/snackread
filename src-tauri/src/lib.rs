@@ -3846,6 +3846,43 @@ fn set_reader_font(state: tauri::State<'_, db::Db>, size: u32, family: String) -
     db::set_app_state(&conn, "reader_font_family", &family)
 }
 
+/// 全局文字书页边距：上/下/左/右/双页中间距（px），仅文字书生效
+#[tauri::command]
+fn get_reader_margins(state: tauri::State<'_, db::Db>) -> serde_json::Value {
+    let conn = state.0.lock().unwrap();
+    let get = |key: &str, def: i64| -> i64 {
+        db::get_app_state(&conn, key)
+            .ok()
+            .flatten()
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(def)
+    };
+    serde_json::json!({
+        "left": get("reader_margin_left", 10),
+        "right": get("reader_margin_right", 10),
+        "top": get("reader_margin_top", 28),
+        "bottom": get("reader_margin_bottom", 38),
+        "gap": get("reader_margin_gap", 30),
+    })
+}
+
+#[tauri::command]
+fn set_reader_margins(
+    state: tauri::State<'_, db::Db>,
+    left: i64,
+    right: i64,
+    top: i64,
+    bottom: i64,
+    gap: i64,
+) -> Result<(), String> {
+    let conn = state.0.lock().unwrap();
+    db::set_app_state(&conn, "reader_margin_left", &left.to_string())?;
+    db::set_app_state(&conn, "reader_margin_right", &right.to_string())?;
+    db::set_app_state(&conn, "reader_margin_top", &top.to_string())?;
+    db::set_app_state(&conn, "reader_margin_bottom", &bottom.to_string())?;
+    db::set_app_state(&conn, "reader_margin_gap", &gap.to_string())
+}
+
 #[tauri::command]
 fn app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -5174,6 +5211,8 @@ pub fn run() {
             set_reader_theme,
             get_reader_font,
             set_reader_font,
+            get_reader_margins,
+            set_reader_margins,
             is_migrated,
             mark_migrated,
             app_version,

@@ -186,6 +186,7 @@ let textPendingAnimate = false;  // 跨章翻页：待定位完成后是否用�
 let pendingScrollRestore = null; // 翻页→滚动时待恢复的滚动位置 {chapter, frac}
 let readerFontSize = 16;         // 正文字号（px）
 let readerFontFamily = 'system'; // system | serif | sans
+let readerMargins = { left: 10, right: 10, top: 28, bottom: 38, gap: 30 }; // 文字书全局页边距
 let readTimes = {};       // 各书籍累计阅读时长（秒）内存缓存：{ bookPath: seconds }（以 .cshow 为准）
 let readingStartAt = 0;   // 本次阅读开始的毫秒时间戳
 let bookMetaMap = {};     // path -> {title, author, rating, tags}
@@ -587,12 +588,6 @@ function updateFontButtons() {
   fontFamilyBtn.title = '正文字体：' + FONT_FAMILY_LABEL[readerFontFamily] + '（点击切换）';
 }
 
-const READER_MARGIN_L = 10; // 正文左边距（px）
-const READER_MARGIN_R = 10; // 正文右边距（px）
-const READER_MARGIN_TOP = 28; // 正文顶部边距（px）
-const READER_MARGIN_BOTTOM = 38; // 翻页模式正文底部边距（px），比左右/顶部大，避开底部页码胶囊
-
-function textGap() { return doublePage ? 30 : 0; }
 /// 文字书翻页视口宽：翻页模式下 strip 自身宽度被设为全书宽度（n×视口宽），
 /// 不能用 stripEl.clientWidth，只能取窗口宽（阅读区占满窗口）。
 function textViewportW() {
@@ -605,12 +600,12 @@ function readerCfg() {
     fs: readerFontSize,
     ff: readerFontFamily,
     lh: 1.7,
-    mgL: READER_MARGIN_L,
-    mgR: READER_MARGIN_R,
-    mgT: READER_MARGIN_TOP,
-    mgB: READER_MARGIN_BOTTOM,
+    mgL: readerMargins.left,
+    mgR: readerMargins.right,
+    mgT: readerMargins.top,
+    mgB: readerMargins.bottom,
     double: doublePage,
-    gap: textGap(),
+    gap: doublePage ? readerMargins.gap : 0,
     mode: flipOn ? 'flip' : 'scroll',
   };
 }
@@ -3131,6 +3126,7 @@ function applyFlipMode() {
   modeScrollBtn.classList.toggle('on', !flipOn);
   modeFlipBtn.classList.toggle('on', flipOn);
   modeTabEl.hidden = !(focus === 'strip');
+  marginBtnEl.hidden = !(focus === 'strip' && textBook); // 页边距仅文字书
   pageModeEl.hidden = !(focus === 'strip' && flipOn);
   pageSingleBtn.classList.toggle('on', !doublePage);
   pageDoubleBtn.classList.toggle('on', doublePage);
@@ -3612,6 +3608,55 @@ window.addEventListener('resize', () => {
     stripEl.style.scrollBehavior = '';
   });
 });
+
+// ---- 页边距设置（全局，仅文字书生效）----
+const marginBtnEl = document.getElementById('margin-btn');
+const marginBackdropEl = document.getElementById('margin-backdrop');
+const marginPanelEl = document.getElementById('margin-panel');
+const marginCloseEl = document.getElementById('margin-close');
+const marginSaveEl = document.getElementById('margin-save');
+const marginTopEl = document.getElementById('margin-top');
+const marginBottomEl = document.getElementById('margin-bottom');
+const marginLeftEl = document.getElementById('margin-left');
+const marginRightEl = document.getElementById('margin-right');
+const marginGapEl = document.getElementById('margin-gap');
+
+function openMarginPanel() {
+  marginTopEl.value = readerMargins.top;
+  marginBottomEl.value = readerMargins.bottom;
+  marginLeftEl.value = readerMargins.left;
+  marginRightEl.value = readerMargins.right;
+  marginGapEl.value = readerMargins.gap;
+  marginBackdropEl.hidden = false;
+  marginPanelEl.hidden = false;
+}
+function closeMarginPanel() {
+  marginBackdropEl.hidden = true;
+  marginPanelEl.hidden = true;
+}
+function saveMarginPanel() {
+  const clamp = (v, def) => {
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) ? Math.max(0, Math.min(120, n)) : def;
+  };
+  readerMargins = {
+    top: clamp(marginTopEl.value, readerMargins.top),
+    bottom: clamp(marginBottomEl.value, readerMargins.bottom),
+    left: clamp(marginLeftEl.value, readerMargins.left),
+    right: clamp(marginRightEl.value, readerMargins.right),
+    gap: clamp(marginGapEl.value, readerMargins.gap),
+  };
+  invoke('set_reader_margins', {
+    left: readerMargins.left, right: readerMargins.right,
+    top: readerMargins.top, bottom: readerMargins.bottom, gap: readerMargins.gap,
+  }).catch(() => {});
+  broadcastReaderCfg(); // 各章 iframe 按新边距重排并上报几何
+  closeMarginPanel();
+}
+marginBtnEl.addEventListener('click', openMarginPanel);
+marginCloseEl.addEventListener('click', closeMarginPanel);
+marginBackdropEl.addEventListener('click', closeMarginPanel);
+marginSaveEl.addEventListener('click', saveMarginPanel);
 
 modeScrollBtn.addEventListener('click', () => setReadMode('scroll'));
 modeFlipBtn.addEventListener('click', () => setReadMode('flip'));
@@ -5065,6 +5110,7 @@ document.addEventListener('keydown', (e) => {
   // 恢复阅读背景主题（从后端配置目录读取）
   readerTheme = await loadReaderTheme();
   await loadReaderFont();
+  try { readerMargins = await invoke('get_reader_margins'); } catch { /* 忽略 */ }
   updateFontButtons();
   applyReaderTheme(readerTheme);
   // 进入阅读时若正在解包 EPUB，显示顶部进度条

@@ -438,6 +438,39 @@ body.reading.ctl-on #toc-panel {
 #theme-btn.show, #reader-back.show { transform: translateY(0); pointer-events: auto; }
 #theme-btn svg, #reader-back svg { display: block; }
 #theme-btn:hover, #reader-back:hover { color: var(--text); }
+#margin-btn[hidden] { display: none; }
+/* 页边距设置面板（全局，仅文字书） */
+#margin-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.35);
+  z-index: 24;
+}
+#margin-backdrop[hidden], #margin-panel[hidden] { display: none; }
+#margin-panel {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 240px; padding: 14px 16px;
+  background: var(--dialog); border: 1px solid var(--border);
+  border-radius: var(--radius-l); box-shadow: var(--shadow-3);
+  z-index: 25;
+}
+#margin-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-weight: 600; font-size: 14px; margin-bottom: 10px;
+}
+.margin-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin: 8px 0; font-size: 13px;
+}
+.margin-row input {
+  width: 84px; padding: 4px 6px; font-size: 14px;
+  border: 1px solid var(--border2); border-radius: var(--radius-s);
+  background: var(--bg); color: var(--text);
+}
+#margin-save {
+  width: 100%; margin-top: 12px; padding: 8px;
+  background: var(--accent); color: #fff; border: none;
+  border-radius: var(--radius-m); font-size: 14px;
+}
+#margin-save:active { opacity: .85; }
 /* 左下阅读状态 + 右下页码：合并为底部一整条 */
 #reading-bar {
   position: fixed; left: 14px; right: 14px; bottom: calc(12px + var(--safe-bottom));
