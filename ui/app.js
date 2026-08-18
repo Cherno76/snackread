@@ -5058,8 +5058,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 (async () => {
-  versionEl.innerHTML = '<img src="snackread-logo.svg" class="version-logo" alt=""> v' +
-    await invoke('app_version') + ' · © 2026 Cherno';
+  versionEl.innerHTML = '<b>Snack</b>Read v' + await invoke('app_version') + ' · © 2026 Cherno';
   await migrateLegacyStorage();
   // 恢复阅读背景主题（从后端配置目录读取）
   readerTheme = await loadReaderTheme();
