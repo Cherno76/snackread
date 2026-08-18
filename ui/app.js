@@ -4078,17 +4078,19 @@ function renderCardMeta(b, card) {
   if (tags.length > 0) {
     const row = document.createElement('div');
     row.className = 'card-tags';
-    const shown = tags.slice(0, 3);
+    // 列表视图宽度足够，标签全部显示并自动换行；缩略图视图只显示前 3 个
+    const maxTags = libViewMode === 'list' ? tags.length : 3;
+    const shown = tags.slice(0, maxTags);
     for (const t of shown) {
       const chip = document.createElement('span');
       chip.className = 'tag-chip';
       chip.textContent = t;
       row.appendChild(chip);
     }
-    if (tags.length > 3) {
+    if (tags.length > maxTags) {
       const more = document.createElement('span');
       more.className = 'tag-chip';
-      more.textContent = '+' + (tags.length - 3);
+      more.textContent = '+' + (tags.length - maxTags);
       row.appendChild(more);
     }
     el.appendChild(row);
