@@ -61,6 +61,9 @@ button:focus:not(:focus-visible) { outline: none; }
 .icon-btn:hover { background: var(--btn); }
 .icon-btn[hidden] { display: none !important; }
 html, body, #app { height: 100%; }
+/* 隐藏滚动条：滚动条会吃掉约 13px 布局宽度，导致内容视觉上右偏、左右边距不对称 */
+::-webkit-scrollbar { width: 0; height: 0; display: none; }
+* { scrollbar-width: none; }
 body {
   font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
   background: var(--bg); color: var(--text); overflow: hidden;

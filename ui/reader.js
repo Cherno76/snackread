@@ -80,6 +80,9 @@
     // 单页一列 = 容器宽；双页两列 = (容器宽 - 列距)/2（保留小数，避免多列合计超宽退化单栏）。
     // 父窗口只传边距/模式/字号，不再下发列宽，杜绝两侧计算不一致。
     var containerW = state.mode === 'flip' ? refreshGeometry() : 0;
+    // 隐藏 iframe 内滚动条：否则滚动条占约 13px 布局宽度，正文容器会被挤窄、视觉右偏
+    css += '::-webkit-scrollbar{width:0;height:0;display:none;}';
+    css += '*{scrollbar-width:none;}';
     css += 'html,body{background:' + t.bg + ' !important;color:' + t.fg + ' !important;margin:0 !important;}';
     css += '[data-cshow-hdr]{display:none !important;}'; // 解包标记的固定页眉/页脚
     css += 'body a{color:' + t.link + ' !important;}';
