@@ -49,7 +49,6 @@
     ff: q.ff || 'system',
     lh: parseFloat(q.lh || '1.7') || 1.7,
     mg: parseInt(q.mg || '28', 10) || 28,
-    mgT: parseInt(q.mgt || '28', 10) || 28,
     mgB: parseInt(q.mgb || '28', 10) || 28,
     pageW: parseInt(q.pw || '0', 10) || 0,
     pageH: parseInt(q.ph || '0', 10) || 0,
@@ -115,7 +114,7 @@
       // 横向滚动由父窗口统一翻页（gotoPage 用 scrollLeft 定位）；
       // 用 hidden 而非 auto，避免触控板滚轮原生滚动列容器导致落到半页位置
       css += 'overflow-x:hidden;overflow-y:hidden;';
-      css += 'padding:' + state.mgT + 'px 0 ' + state.mgB + 'px;';
+      css += 'padding:' + state.mg + 'px 0 ' + state.mgB + 'px;';
       css += 'box-sizing:border-box;';
       css += '}';
       // WebKit 多列（已知 bug #25633）对替换元素（img）的尺寸计算不可靠：
@@ -123,7 +122,7 @@
       // 且单靠 img 上的 break-inside 无法解决。
       // 实测绕开方案：把图片放进 flex 容器，或强制撑满容器 + object-fit，
       // WebKit 在这些布局下按自然尺寸/等比完整渲染。
-      var colH = Math.max(120, state.pageH - state.mgT - state.mgB); // 列内容高（.cshow-pages 有上下 padding）
+      var colH = Math.max(120, state.pageH - state.mg - state.mgB); // 列内容高（.cshow-pages 有上下 padding）
       css += '.cshow-imgguard,.cshow-imgpage{-webkit-column-break-inside:avoid;break-inside:avoid;}';
       // 大图（封面等）：容器撑满列内容高、图片 object-fit 等比完整显示、独占一列
       css += '.cshow-imgpage{height:' + colH + 'px;-webkit-column-break-before:always;-webkit-column-break-after:always;break-before:column;break-after:column;}';
@@ -218,7 +217,6 @@
     if (cfg.ff !== undefined) state.ff = cfg.ff;
     if (cfg.lh !== undefined) state.lh = cfg.lh;
     if (cfg.mg !== undefined) state.mg = cfg.mg;
-    if (cfg.mgT !== undefined) state.mgT = cfg.mgT;
     if (cfg.mgB !== undefined) state.mgB = cfg.mgB;
     if (cfg.pageW !== undefined) state.pageW = cfg.pageW;
     if (cfg.pageH !== undefined) state.pageH = cfg.pageH;
