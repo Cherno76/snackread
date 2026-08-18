@@ -87,6 +87,10 @@ body {
   height: 15px; width: auto; display: inline-block;
   vertical-align: -3px; margin-right: 6px;
 }
+/* 暗色模式：Logo 反色适配（黑→白，深灰→浅灰），保持与亮色模式相同的对比关系 */
+@media (prefers-color-scheme: dark) {
+  #titlebar-text .titlebar-logo { filter: invert(1); }
+}
 #bar-status {
   display: flex; align-items: center; gap: 8px;
   font-size: 12px; color: var(--item);
