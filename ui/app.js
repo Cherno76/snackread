@@ -1567,7 +1567,8 @@ function computeWindowTitle() {
 
 function updateWindowTitle() {
   const t = computeWindowTitle();
-  titlebarTextEl.innerHTML = t.replace(/SnackRead/g, '<b>Snack</b>Read');
+  titlebarTextEl.innerHTML = t.replace(/SnackRead/g,
+    '<img src="snackread-logo.svg" class="titlebar-logo" alt="">');
   if (t !== winTitleCache) {
     winTitleCache = t;
     setWindowTitle(t);
