@@ -82,6 +82,7 @@ body {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   max-width: 62%;
 }
+#titlebar-text b { color: var(--text); font-weight: 800; }
 #bar-status {
   display: flex; align-items: center; gap: 8px;
   font-size: 12px; color: var(--item);
