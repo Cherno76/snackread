@@ -1548,9 +1548,9 @@ function textVolumeOf(ch) {
 }
 
 function computeWindowTitle() {
-  if (!winTitleBook && !winTitleVol) return 'cshow-gui';
+  if (!winTitleBook && !winTitleVol) return 'SnackRead';
   // 阅读模式：标题栏只显示书信息，不带应用名前缀
-  let t = focus === 'strip' ? '《' + winTitleBook + '》' : 'cshow-gui - 《' + winTitleBook + '》';
+  let t = focus === 'strip' ? '《' + winTitleBook + '》' : 'SnackRead - 《' + winTitleBook + '》';
   if (winTitleVol && winTitleVol !== winTitleBook) t += ' ' + winTitleVol;
   if (textBook && epubMeta) {
     // 文字书：书名后跟当前章节（含章节名）
@@ -2858,7 +2858,7 @@ function exitStripMode() {
   stripEl.style.overflowX = '';
   stripEl.style.overflowY = '';
   winTitleCache = '';
-  setWindowTitle('cshow-gui');
+  setWindowTitle('SnackRead');
   if (stripKind === 'pdf' && currentIdx >= 0) pendingPdfPage = currentIdx;
   if (stripKind === 'epub' && currentIdx >= 0) pendingEpubPage = currentIdx;
   setFocus('list');
@@ -5057,7 +5057,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 (async () => {
-  versionEl.textContent = 'cshow-gui v' + await invoke('app_version') + ' · © 2026 Cherno';
+  versionEl.innerHTML = '<b>Snack</b>Read v' + await invoke('app_version') + ' · © 2026 Cherno';
   await migrateLegacyStorage();
   // 恢复阅读背景主题（从后端配置目录读取）
   readerTheme = await loadReaderTheme();
