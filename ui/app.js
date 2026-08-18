@@ -1061,6 +1061,14 @@ function textProgress(flip) {
   return offset / textTotalCharCount();
 }
 
+// 滚动模式：状态栏右侧显示全书阅读百分比
+function updateScrollPercent() {
+  if (stripKind === 'epub' && textBook && !flipOn) {
+    const p = Math.round(textProgress(false) * 100);
+    progressEl.textContent = p + '%';
+  }
+}
+
 function textShowChapter(ch, colInChapter, animate) {
   textCurChapter = Math.max(0, ch);
   textCurColInChapter = Math.max(0, colInChapter);
@@ -3158,7 +3166,7 @@ function applyFlipMode() {
     }
   }
   updateFlipIndicator();
-  if (textBook && !flipOn) progressEl.textContent = ''; // 滚动模式不显示页码
+  if (textBook && !flipOn) updateScrollPercent(); // 滚动模式右侧显示阅读百分比
   if (textBook) broadcastReaderCfg(); // 模式/几何变化同步到各章 iframe
 }
 
@@ -3494,6 +3502,7 @@ stripEl.addEventListener('scroll', () => {
   updatePageTocSel();
   // 虚拟化：滚动模式跟随当前位置补/删占位 div（rAF 合并高频滚动）
   if (stripKind === 'epub' && textBook && !flipOn) {
+    updateScrollPercent();
     if (textHolderScrollRaf) cancelAnimationFrame(textHolderScrollRaf);
     textHolderScrollRaf = requestAnimationFrame(() => {
       textHolderScrollRaf = 0;
