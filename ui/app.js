@@ -5055,7 +5055,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 (async () => {
-  versionEl.textContent = 'cshow-gui v' + await invoke('app_version') + ' · © 2026 Cherno · MIT';
+  versionEl.textContent = 'cshow-gui v' + await invoke('app_version') + ' · © 2026 Cherno';
   await migrateLegacyStorage();
   // 恢复阅读背景主题（从后端配置目录读取）
   readerTheme = await loadReaderTheme();
