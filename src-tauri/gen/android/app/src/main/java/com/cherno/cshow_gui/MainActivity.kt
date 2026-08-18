@@ -1,7 +1,9 @@
 package com.cherno.cshow_gui
 
 import android.content.Context
+import android.content.BroadcastReceiver
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
@@ -13,6 +15,8 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 
 class MainActivity : TauriActivity() {
+  private var batteryReceiver: BroadcastReceiver? = null
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     // 读取手机存储里的书库需要「所有文件访问」权限；未授权时引导去设置页开启
@@ -37,7 +41,22 @@ class MainActivity : TauriActivity() {
     super.onWebViewCreate(webView)
     webView.post {
       webView.addJavascriptInterface(StatusBridge(this), "AndroidStatus")
+      // 电池插拔/电量变化时立即通知前端刷新标题栏状态
+      batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+          webView.evaluateJavascript("window.dispatchEvent(new Event('statuschange'))", null)
+        }
+      }
+      runCatching {
+        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+      }
     }
+  }
+
+  override fun onDestroy() {
+    super.onDestroy()
+    batteryReceiver?.let { runCatching { unregisterReceiver(it) } }
+    batteryReceiver = null
   }
 
   class StatusBridge(private val activity: MainActivity) {

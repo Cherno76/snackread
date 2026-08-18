@@ -110,9 +110,10 @@ body {
   display: none; position: absolute; z-index: 0;
   font-size: 8px; line-height: 1; left: 50%; top: 50%;
   transform: translate(-50%, -50%);
+  color: #fff; text-shadow: 0 0 1.5px rgba(0,0,0,.7);
 }
-.bat.charging .bat-fill { display: none; }
 .bat.charging .bat-bolt { display: block; }
+.bat.charging .bat-pct { display: none; }
 .bat-pct {
   position: relative; z-index: 1;
   font-size: 7px; font-weight: 700; line-height: 1;

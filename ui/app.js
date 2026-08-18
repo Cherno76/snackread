@@ -68,6 +68,7 @@ function titleBarStatus() {
 }
 titleBarStatus();
 setInterval(titleBarStatus, 30000);
+window.addEventListener('statuschange', titleBarStatus);
 if (navigator.connection) {
   navigator.connection.addEventListener('change', titleBarStatus);
 }
