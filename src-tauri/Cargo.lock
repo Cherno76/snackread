@@ -594,7 +594,7 @@ dependencies = [
 
 [[package]]
 name = "cshow-gui"
-version = "0.5.14"
+version = "0.5.15"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
