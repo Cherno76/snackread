@@ -443,7 +443,7 @@ body.reading.ctl-on #toc-panel {
   position: fixed; left: 14px; right: 14px; bottom: calc(12px + var(--safe-bottom));
   display: none; align-items: center; justify-content: space-between; gap: 12px;
   background: var(--pill); border-radius: var(--radius-l);
-  padding: 4px 10px; box-shadow: var(--shadow-1); opacity: .8;
+  padding: 4px 10px; box-shadow: var(--shadow-1); opacity: 1;
   pointer-events: none; z-index: 8;
   transition: opacity .25s var(--ease);
 }
