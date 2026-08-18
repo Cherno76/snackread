@@ -3513,8 +3513,12 @@ stripEl.addEventListener('scroll', () => {
     updateFlipIndicator();
     return;
   }
-  const idx = currentStripIndex();
-  progressEl.textContent = `${idx + 1} / ${pages.length} 页`;
+  // 文字书滚动模式右侧显示阅读百分比（上方 updateScrollPercent 已写入），
+  // 页码文本只适用于图片/PDF 条漫
+  if (!(stripKind === 'epub' && textBook)) {
+    const idx = currentStripIndex();
+    progressEl.textContent = `${idx + 1} / ${pages.length} 页`;
+  }
   updateProgressBar();
   // 漫画卷尾：滚动模式滚到底部 → 下一卷对话框
   if (focus === 'strip' && !textBook) {
