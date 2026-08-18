@@ -528,15 +528,17 @@ struct MetaPreset {
     name: String,
 }
 
-/// 规范化书名：先转简体，再去括号内容、去空白、转小写（用于预置库匹配）
+/// 规范化书名：先转简体，再去括号内容、去空白、转小写（用于预置库匹配）。
+/// 《》是书名号，里面的才是书名本体：只去掉书名号本身，保留内容。
 fn norm_title_key(s: &str) -> String {
     let s = zhconv::zhconv(s, zhconv::Variant::ZhCN);
     let mut out = String::new();
     let mut depth = 0i32;
     for c in s.trim().chars() {
         match c {
-            '[' | '（' | '(' | '《' => depth += 1,
-            ']' | '）' | ')' | '》' => depth = (depth - 1).max(0),
+            '[' | '（' | '(' => depth += 1,
+            ']' | '）' | ')' => depth = (depth - 1).max(0),
+            '《' | '》' => {} // 书名号只作标记，里面的书名要保留
             _ if depth == 0 => out.push(c.to_ascii_lowercase()),
             _ => {}
         }
@@ -571,9 +573,24 @@ fn meta_presets() -> &'static HashMap<String, MetaPreset> {
 }
 
 /// 新书自动填元数据：仅当书完全没有元数据（title/author/rating/tags/note 全空）时，
+/// 当前元数据是否恰好等于某个预置条目（说明是旧版本自动填充写入的）。
+/// 旧版把书名号里的书名剥掉，导致多本同作者的书全被填成同一个预置，
+/// 这种“预置填充”元数据允许重新匹配纠正。
+fn is_preset_fill(b: &db::BookRow, presets: &HashMap<String, MetaPreset>) -> bool {
+    presets.values().any(|p| {
+        p.title == b.title
+            && p.author == b.author
+            && (p.rating - b.rating).abs() < 0.0001
+            && serde_json::to_string(&p.tags).map(|t| t == b.tags).unwrap_or(false)
+            && p.note == b.note
+    })
+}
+
 /// 按规范化文件名匹配内置预置库，填入预置数据（不含封面）。
+/// 仅对完全没有元数据的书生效；若元数据恰好等于某个预置条目（旧版误填），
+/// 也允许重新匹配纠正，匹配不上时清空以免继续显示错误的预置数据。
 fn maybe_fill_preset_meta(conn: &rusqlite::Connection, path: &str) {
-    let (kind, is_ebook, hidden, read_time, last_vol, last_at) =
+    let (kind, is_ebook, hidden, read_time, last_vol, last_at, rematch) =
         match db::get_book(conn, path).ok().flatten() {
             Some(b) => {
                 let empty = b.title.trim().is_empty()
@@ -582,9 +599,14 @@ fn maybe_fill_preset_meta(conn: &rusqlite::Connection, path: &str) {
                     && (b.tags == "[]" || b.tags.trim().is_empty())
                     && b.note.trim().is_empty();
                 if !empty {
-                    return;
+                    // 非空元数据：仅当恰好等于某个预置条目（旧版自动填充）时才允许重匹配
+                    if !is_preset_fill(&b, &meta_presets()) {
+                        return;
+                    }
+                    (b.kind, b.is_ebook, b.hidden, b.read_time, b.last_read_volume, b.last_read_at, true)
+                } else {
+                    (b.kind, b.is_ebook, b.hidden, b.read_time, b.last_read_volume, b.last_read_at, false)
                 }
-                (b.kind, b.is_ebook, b.hidden, b.read_time, b.last_read_volume, b.last_read_at)
             }
             None => {
                 // 还没有行：按文件类型推断（仅书类文件/目录才建行）
@@ -599,7 +621,7 @@ fn maybe_fill_preset_meta(conn: &rusqlite::Connection, path: &str) {
                     "pdf" => "pdf",
                     _ => "dir",
                 };
-                (kind.to_string(), kind != "dir", false, 0u64, String::new(), 0u64)
+                (kind.to_string(), kind != "dir", false, 0u64, String::new(), 0u64, false)
             }
         };
     let stem = Path::new(path)
@@ -607,7 +629,27 @@ fn maybe_fill_preset_meta(conn: &rusqlite::Connection, path: &str) {
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
     let key = norm_title_key(&stem);
-    let Some(preset) = meta_presets().get(&key) else { return };
+    let Some(preset) = meta_presets().get(&key) else {
+        // 旧版误填的书找不到正确预置：清空元数据，避免继续显示错误的预置数据
+        if rematch {
+            let _ = db::upsert_book(
+                conn,
+                path,
+                &kind,
+                is_ebook,
+                hidden,
+                "",
+                "",
+                0.0,
+                "[]",
+                "",
+                read_time,
+                if last_vol.is_empty() { None } else { Some(last_vol.as_str()) },
+                last_at,
+            );
+        }
+        return;
+    };
     let tags = serde_json::to_string(&preset.tags).unwrap_or_else(|_| "[]".into());
     let _ = db::upsert_book(
         conn,
@@ -4085,6 +4127,16 @@ fn migrate_legacy_to_db(conn: &rusqlite::Connection, work_dir: &Path) -> Result<
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn norm_title_key_keeps_book_title_in_guillemets() {
+        // 《》是书名号：里面的书名必须保留，否则同作者的书写全撞成同一个 key
+        assert_eq!(norm_title_key("《庆余年》（精校全本）作者：猫腻"), "庆余年作者：猫腻");
+        assert_eq!(norm_title_key("《将夜》（精校全本）作者：猫腻"), "将夜作者：猫腻");
+        assert_eq!(norm_title_key("庆余年"), "庆余年");
+        assert_eq!(norm_title_key("大奉打更人（测试）"), "大奉打更人");
+        assert_eq!(norm_title_key("死亡筆記（測試）"), "死亡笔记"); // 繁体转简体
+    }
 
     #[test]
     fn detect_cover_finds_nested_cover() {
