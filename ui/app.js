@@ -586,7 +586,8 @@ function updateFontButtons() {
   fontFamilyBtn.title = '正文字体：' + FONT_FAMILY_LABEL[readerFontFamily] + '（点击切换）';
 }
 
-const READER_MARGIN = 28; // 正文四周边距（px），左右与上下一致
+const READER_MARGIN = 28; // 正文左右与顶部边距（px）
+const READER_MARGIN_BOTTOM = 38; // 翻页模式正文底部边距（px），比左右/顶部大，避开底部页码胶囊
 
 function textGap() { return doublePage ? 56 : 0; }
 /// 文字书翻页视口宽：翻页模式下 strip 自身宽度被设为全书宽度（n×视口宽），
@@ -611,6 +612,7 @@ function readerCfg() {
     ff: readerFontFamily,
     lh: 1.7,
     mg: READER_MARGIN,
+    mgB: READER_MARGIN_BOTTOM,
     mode: flipOn ? 'flip' : 'scroll',
     pageW: textPageW(),
     pageH: textPageH(),
