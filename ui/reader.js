@@ -49,6 +49,8 @@
     ff: q.ff || 'system',
     lh: parseFloat(q.lh || '1.7') || 1.7,
     mg: parseInt(q.mg || '28', 10) || 28,
+    mgL: parseInt(q.mgl || '15', 10) || 15,
+    mgR: parseInt(q.mgr || '15', 10) || 15,
     mgT: parseInt(q.mgt || '28', 10) || 28,
     mgB: parseInt(q.mgb || '28', 10) || 28,
     double: false,
@@ -108,7 +110,7 @@
       css += 'html,body{width:100% !important;max-width:none !important;padding:0 !important;}';
       css += '.cshow-pages{';
       css += 'width:' + containerW + 'px;';
-      css += 'margin:0 auto;';
+      css += 'margin:0 ' + state.mgR + 'px 0 ' + state.mgL + 'px;';
       css += 'column-width:' + state.pageW + 'px;';
       css += 'column-gap:' + state.gap + 'px;';
       if (state.gap > 0) {
@@ -139,7 +141,7 @@
       css += '.cshow-imgguard img,.cshow-imgguard svg,.cshow-imgguard video{max-width:100%;max-height:' + Math.round(state.pageH * 0.55) + 'px;display:block;margin:0 auto;}';
     } else {
       // 滚动（条漫）模式：正文左右边距与分页一致
-      css += 'html,body{padding:0 ' + state.mg + 'px !important;}';
+      css += 'html,body{padding:0 ' + state.mgL + 'px 0 ' + state.mgR + 'px !important;}';
     }
     s.textContent = css;
   }
@@ -212,7 +214,7 @@
   function refreshGeometry() {
     var w = window.innerWidth || root.clientWidth || state.pageW || 800;
     var h = window.innerHeight || root.clientHeight || state.pageH || 600;
-    var containerW = Math.max(200, w - 2 * state.mg);
+    var containerW = Math.max(200, w - state.mgL - state.mgR);
     state.pageH = Math.max(200, h);
     state.pageW = state.double
       ? Math.max(1, (containerW - state.gap) / 2)
@@ -237,6 +239,8 @@
     if (cfg.ff !== undefined) state.ff = cfg.ff;
     if (cfg.lh !== undefined) state.lh = cfg.lh;
     if (cfg.mg !== undefined) state.mg = cfg.mg;
+    if (cfg.mgL !== undefined) state.mgL = cfg.mgL;
+    if (cfg.mgR !== undefined) state.mgR = cfg.mgR;
     if (cfg.mgT !== undefined) state.mgT = cfg.mgT;
     if (cfg.mgB !== undefined) state.mgB = cfg.mgB;
     if (cfg.gap !== undefined) state.gap = cfg.gap;
