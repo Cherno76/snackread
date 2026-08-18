@@ -598,7 +598,10 @@ body.reading.ctl-on #toc-panel {
 }
 /* 列表视图：左缩略图 + 右信息，右上角 类型/刷新/编辑/eye */
 #list-grid.list {
-  display: flex; flex-direction: column; gap: 10px;
+  /* 自适应网格：一行能放几个就放几个（基准 360px/张），不足则换行并撑满 */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 10px;
   padding: 10px 10px 64px;
 }
 #list-grid.list .lib-card {
