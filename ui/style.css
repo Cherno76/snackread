@@ -323,7 +323,7 @@ body.reading.ctl-on #toc-panel {
   position: static; background: none; padding: 0; box-shadow: none;
   font-size: 12px; color: var(--muted);
 }
-#version b { font-weight: 800; }
+#version b { color: var(--text); font-weight: 800; }
 #grid-stats {
   font-size: 12px; color: var(--muted);
   white-space: nowrap;
