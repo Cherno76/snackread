@@ -591,7 +591,7 @@ const READER_MARGIN_R = 10; // 正文右边距（px）
 const READER_MARGIN_TOP = 28; // 正文顶部边距（px）
 const READER_MARGIN_BOTTOM = 38; // 翻页模式正文底部边距（px），比左右/顶部大，避开底部页码胶囊
 
-function textGap() { return doublePage ? 56 : 0; }
+function textGap() { return doublePage ? 30 : 0; }
 /// 文字书翻页视口宽：翻页模式下 strip 自身宽度被设为全书宽度（n×视口宽），
 /// 不能用 stripEl.clientWidth，只能取窗口宽（阅读区占满窗口）。
 function textViewportW() {
