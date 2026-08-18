@@ -3262,17 +3262,10 @@ async function toggleRtl() {
   saveFlipSettings();
 }
 
-// 底部阅读进度条：按当前页 / 总页数填充
+// 底部阅读进度条：仅漫画类（图片/PDF 条漫）显示，按当前页 / 总页数填充；文字书不显示
 function updateProgressBar() {
-  if (focus !== 'strip') {
+  if (focus !== 'strip' || (stripKind === 'epub' && textBook)) {
     readProgressEl.classList.remove('on');
-    return;
-  }
-  if (stripKind === 'epub' && textBook && flipOn) {
-    const total = textTotalPages || 1;
-    if (total <= 1) { readProgressEl.classList.remove('on'); return; }
-    readProgressEl.classList.add('on');
-    readProgressFillEl.style.width = Math.min(100, Math.round(((textCol + 1) / total) * 100)) + '%';
     return;
   }
   if (pages.length === 0) {
