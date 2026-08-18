@@ -106,6 +106,13 @@ body {
   background: #4caf50; border-radius: 2.5px; z-index: 0;
 }
 .bat.low .bat-fill { background: var(--red); }
+.bat-bolt {
+  display: none; position: absolute; z-index: 0;
+  font-size: 8px; line-height: 1; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+}
+.bat.charging .bat-fill { display: none; }
+.bat.charging .bat-bolt { display: block; }
 .bat-pct {
   position: relative; z-index: 1;
   font-size: 7px; font-weight: 700; line-height: 1;

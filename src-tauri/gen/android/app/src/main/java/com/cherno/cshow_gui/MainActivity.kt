@@ -44,9 +44,13 @@ class MainActivity : TauriActivity() {
     @JavascriptInterface
     fun getStatus(): String {
       var battery = -1
+      var charging = false
       try {
         val bm = activity.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
         battery = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        val status = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_STATUS)
+        charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+          status == BatteryManager.BATTERY_STATUS_FULL
       } catch (_: Exception) {
       }
       var wifi = false
@@ -56,7 +60,7 @@ class MainActivity : TauriActivity() {
         wifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
       } catch (_: Exception) {
       }
-      return "{\"battery\":$battery,\"wifi\":$wifi}"
+      return "{\"battery\":$battery,\"wifi\":$wifi,\"charging\":$charging}"
     }
   }
 }

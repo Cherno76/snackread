@@ -31,12 +31,13 @@ const batPctEl = document.getElementById('bat-pct');
 function titleBarStatus() {
   const d = new Date();
   barTimeEl.textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-  let battery = -1, wifi = null;
+  let battery = -1, wifi = null, charging = false;
   try {
     if (window.AndroidStatus) {
       const s = JSON.parse(window.AndroidStatus.getStatus());
       battery = s.battery;
       wifi = s.wifi;
+      charging = !!s.charging;
     }
   } catch { /* 桥未就绪，稍后重试 */ }
   let cell = '';
@@ -57,6 +58,7 @@ function titleBarStatus() {
     batFillEl.style.width = `calc(${battery}% - 3px)`;
     batPctEl.textContent = String(battery);
     batEl.classList.toggle('low', battery <= 20);
+    batEl.classList.toggle('charging', charging);
     // 电量条覆盖到文字时用白字保证对比度
     batPctEl.style.color = battery > 55 ? '#fff' : '';
     batEl.hidden = false;
