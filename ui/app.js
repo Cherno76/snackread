@@ -1637,9 +1637,12 @@ function splitBookName(base) {
   // 括号标题模式：末位括号 [标题] 后有内容（且括号内容不是格式标签）→ 该括号是标题
   const m = base.match(/\[([^\]]+)\](?=[^\[]*$)/);
   if (m) {
+    // 圆括号内部的方括号（如 “([美]亨廷顿…)”）不是书名，跳过避免误判
+    const before = base.slice(0, m.index);
+    const parenDepth = (before.match(/\(/g) || []).length - (before.match(/\)/g) || []).length;
     const tag = m[1].trim();
     const after = base.slice(m.index + m[0].length).trim();
-    if (after && !isTagBracket(tag)) {
+    if (parenDepth <= 0 && after && !isTagBracket(tag)) {
       return { title: tag, volume: after };
     }
     // 这个括号不是标题（格式标签或无卷内容）：去掉该括号组后继续解析
