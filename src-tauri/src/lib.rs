@@ -1785,6 +1785,13 @@ fn reading_stats(state: tauri::State<'_, db::Db>) -> ReadingStats {
     let mut started_books = 0usize;
     let mut total_read_time = 0u64;
     for (path, name, is_dir) in &books {
+        // 预置库/手动元数据优先：统计展示用准确书名，而不是文件名
+        maybe_fill_preset_meta(&conn, path);
+        let meta_title = db::get_book(&conn, path)
+            .ok()
+            .flatten()
+            .map(|b| b.title.trim().to_string())
+            .filter(|t| !t.is_empty());
         let (last_read_at, finished) = book_progress(&conn, Path::new(path), *is_dir);
         let read_time = read_reading_time(&conn, Path::new(path));
         total_read_time += read_time;
@@ -1796,7 +1803,7 @@ fn reading_stats(state: tauri::State<'_, db::Db>) -> ReadingStats {
         }
         recent.push(RecentBook {
             path: path.clone(),
-            name: name.clone(),
+            name: meta_title.unwrap_or_else(|| name.clone()),
             is_dir: *is_dir,
             last_read_at,
             finished,
