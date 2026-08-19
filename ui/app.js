@@ -10,6 +10,7 @@ const BOOK_ORIGIN = /Android/i.test(navigator.userAgent)
   : 'book://localhost';
 // 触摸设备（手机）：单击卡片直接进入，不做“先选中再进入”的两步操作
 const IS_TOUCH = navigator.maxTouchPoints > 0 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const IS_DESKTOP = !IS_TOUCH; // 桌面：悬停/键盘交互；触屏：直接点按
 
 const sidebarEl = document.getElementById('sidebar');
 const libTabsEl = document.getElementById('lib-tabs');
@@ -3766,9 +3767,11 @@ let touchActive = false; // 触摸手势进行中：抑制合成的鼠标事件�
 window.addEventListener('touchstart', () => { touchActive = true; }, { passive: true });
 window.addEventListener('touchend', () => { touchActive = false; });
 window.addEventListener('touchcancel', () => { touchActive = false; });
-window.addEventListener('mousemove', () => {
+window.addEventListener('mousemove', (e) => {
   if (focus !== 'strip') return;
   if (touchActive) return; // 触摸手势中的合成 mousemove 不算
+  // 桌面：只有鼠标进入顶部控件高度范围才呼出（触屏全屏呼出逻辑不变）
+  if (IS_DESKTOP && e.clientY > 90) return;
   showReadingControls();
   hideReadingControlsSoon(3000);
 });
