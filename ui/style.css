@@ -86,19 +86,6 @@ body {
   max-width: 62%;
 }
 #titlebar-text b { color: var(--text); font-weight: 800; }
-/* Mac（桌面）：整条隐藏应用内标题栏（logo/时间/信号），用系统原生标题栏 */
-@media (hover: hover) and (pointer: fine) {
-  #titlebar { display: none !important; }
-  /* 标题栏隐藏后，原来给它让位的元素不再保留 34px 空间 */
-  #sidebar { padding-top: var(--safe-top); }
-  body.reading.ctl-on #mode-tab,
-  body.reading.ctl-on #page-mode,
-  body.reading.ctl-on #theme-btn,
-  body.reading.ctl-on #reader-back {
-    top: calc(10px + var(--safe-top));
-  }
-  body.reading.ctl-on #toc-panel { padding-top: var(--safe-top); }
-}
 #titlebar-text .titlebar-logo {
   height: 15px; width: auto; display: inline-block;
   vertical-align: -3px; margin-right: 6px;
@@ -1008,3 +995,18 @@ body.reading.ctl-on #toc-panel {
 }
 #hover-tip hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
 #hover-tip a { color: var(--accent); text-decoration: none; }
+
+/* ---- 桌面端覆盖（置于末尾，确保压过前面的基础规则）---- */
+/* Mac（桌面）：整条隐藏应用内标题栏（logo/时间/信号），用系统原生标题栏 */
+@media (hover: hover) and (pointer: fine) {
+  #titlebar { display: none !important; }
+  /* 标题栏隐藏后，原来给它让位的元素不再保留 34px 空间 */
+  #sidebar { padding-top: var(--safe-top); }
+  body.reading.ctl-on #mode-tab,
+  body.reading.ctl-on #page-mode,
+  body.reading.ctl-on #theme-btn,
+  body.reading.ctl-on #reader-back {
+    top: calc(10px + var(--safe-top));
+  }
+  body.reading.ctl-on #toc-panel { padding-top: var(--safe-top); }
+}
