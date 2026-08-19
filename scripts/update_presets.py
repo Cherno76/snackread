@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""从 Mac 书库数据库重新生成内置元数据预置库 src-tauri/src/meta_presets.json。
+"""从 Mac 书库数据库重新生成外部元数据预置库（默认 ~/Documents/cshow-work/presets.json）。
 
 行为：
 - 保留现有条目（人工整理的丰富信息），按当前数据库补齐空字段；
@@ -17,10 +17,15 @@ import sqlite3
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PRESETS = os.path.join(ROOT, "src-tauri", "src", "meta_presets.json")
-DB = (
+PRESETS = (
     sys.argv[1]
     if len(sys.argv) > 1
+    else os.path.expanduser("~/Documents/cshow-work/presets.json")
+)
+COVERS_DIR = os.path.expanduser("~/Documents/cshow-work/covers")
+DB = (
+    sys.argv[2]
+    if len(sys.argv) > 2
     else os.path.expanduser("~/Documents/cshow-work/library.sqlite3")
 )
 
@@ -28,8 +33,8 @@ COVER_MAX_W = 240
 COVER_QUALITY = 82
 
 
-def read_cover_b64(path: str):
-    """把封面压成 JPEG 缩略图并返回 base64；失败返回 None。"""
+def read_cover_thumb(path: str):
+    """把封面压成 JPEG 缩略图，返回 (字节, base64)；失败返回 None。"""
     if not path or not os.path.isfile(path):
         return None
     try:
@@ -42,9 +47,19 @@ def read_cover_b64(path: str):
             im = im.resize((COVER_MAX_W, h), Image.LANCZOS)
         buf = io.BytesIO()
         im.save(buf, "JPEG", quality=COVER_QUALITY)
-        return base64.b64encode(buf.getvalue()).decode("ascii")
+        data = buf.getvalue()
+        return data, base64.b64encode(data).decode("ascii")
     except Exception:
         return None
+
+
+def safe_cover_name(title: str):
+    import re
+
+    s = re.sub(r'[\/\\:*?"<>|]', "_", title.strip())
+    if len(s) > 80:
+        s = s[:80]
+    return s or "未命名"
 
 
 def main():
@@ -52,8 +67,11 @@ def main():
         print(f"数据库不存在: {DB}")
         sys.exit(1)
 
-    with open(PRESETS, encoding="utf-8") as f:
-        entries = json.load(f)
+    if os.path.isfile(PRESETS):
+        with open(PRESETS, encoding="utf-8") as f:
+            entries = json.load(f)
+    else:
+        entries = []
     by_name = {e.get("name", ""): e for e in entries}
 
     conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
@@ -65,6 +83,8 @@ def main():
 
     added = 0
     covers = 0
+    os.makedirs(COVERS_DIR, exist_ok=True)
+    used_cover_names = set()
     for path, title, author, rating, tags, note, cover in rows:
         name = os.path.basename(path.rstrip("/"))
         if not name:
@@ -94,10 +114,21 @@ def main():
         if not entry.get("note"):
             entry["note"] = note or ""
         if not entry.get("cover_b64") and cover:
-            b64 = read_cover_b64(cover)
-            if b64:
+            thumb = read_cover_thumb(cover)
+            if thumb:
+                data, b64 = thumb
                 entry["cover_b64"] = b64
                 covers += 1
+                # 封面文件名用书名，便于人工识别（重名自动加序号）
+                base = safe_cover_name(entry.get("title") or title)
+                fname = f"{base}.jpg"
+                n = 2
+                while fname in used_cover_names:
+                    fname = f"{base} ({n}).jpg"
+                    n += 1
+                used_cover_names.add(fname)
+                with open(os.path.join(COVERS_DIR, fname), "wb") as f:
+                    f.write(data)
 
     with open(PRESETS, "w", encoding="utf-8") as f:
         json.dump(entries, f, ensure_ascii=False, indent=1)

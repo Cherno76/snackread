@@ -572,9 +572,7 @@ fn add_reading_time(state: tauri::State<'_, db::Db>, path: String, seconds: u64)
     db::add_read_time(&conn, &path, seconds)
 }
 
-// ---- 内置元数据预置库：新书（完全无元数据）按书名自动匹配填充 ----
-
-const META_PRESETS_JSON: &str = include_str!("meta_presets.json");
+// ---- 元数据预置库（外部文件）：新书（完全无元数据）按书名自动匹配填充 ----
 
 #[derive(Deserialize, Serialize, Clone)]
 struct MetaPreset {
@@ -615,25 +613,7 @@ fn meta_presets() -> &'static HashMap<String, MetaPreset> {
     static MAP: OnceLock<HashMap<String, MetaPreset>> = OnceLock::new();
     MAP.get_or_init(|| {
         let mut m: HashMap<String, MetaPreset> = HashMap::new();
-        if let Ok(list) = serde_json::from_str::<Vec<MetaPreset>>(META_PRESETS_JSON) {
-            for p in list {
-                let k = norm_title_key(&p.title);
-                if !k.is_empty() {
-                    m.entry(k).or_insert_with(|| p.clone());
-                }
-                if !p.name.is_empty() {
-                    let stem = Path::new(&p.name)
-                        .file_stem()
-                        .map(|s| s.to_string_lossy().into_owned())
-                        .unwrap_or_default();
-                    let k2 = norm_title_key(&stem);
-                    if !k2.is_empty() {
-                        m.entry(k2).or_insert_with(|| p.clone());
-                    }
-                }
-            }
-        }
-        // 外部预置库（导出功能产生，可手工编辑）：存在且可解析时覆盖/补充内置
+        // 完全依赖外部预置库：存在且可解析时加载，否则预置为空（不自动填充）
         if let Ok(text) = fs::read_to_string(external_presets_path()) {
             if let Ok(list) = serde_json::from_str::<Vec<MetaPreset>>(&text) {
                 for p in list {
@@ -658,11 +638,11 @@ fn meta_presets() -> &'static HashMap<String, MetaPreset> {
     })
 }
 
-/// 外部预置库路径：Mac 放工作目录（用户可编辑）；Android 放 Download（用户可访问）
+/// 外部预置库路径：Mac 放工作目录（用户可编辑）；Android 放 E-Books 根（用户可访问）
 fn external_presets_path() -> PathBuf {
     #[cfg(target_os = "android")]
     {
-        PathBuf::from("/storage/emulated/0/Download/SnackRead-presets.json")
+        PathBuf::from("/storage/emulated/0/E-Books/presets.json")
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -670,8 +650,50 @@ fn external_presets_path() -> PathBuf {
     }
 }
 
-/// 把封面压成 240px JPEG 并转 base64（预置库内嵌封面用）
-fn cover_thumb_b64(path: &str) -> Option<String> {
+/// 导出封面存放目录：Android 放 E-Books/covers（与书库一起拷贝）；Mac 放工作目录 covers
+fn preset_covers_dir() -> PathBuf {
+    #[cfg(target_os = "android")]
+    {
+        PathBuf::from("/storage/emulated/0/E-Books/covers")
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        work_dir().join("covers")
+    }
+}
+
+/// Android 首次运行：确保 E-Books 与 covers 目录存在
+/// （书库本身由用户导入到子目录，E-Books 根只放预置库/封面）
+#[cfg(target_os = "android")]
+fn ensure_android_ebook_dirs() {
+    let root = Path::new("/storage/emulated/0/E-Books");
+    let _ = fs::create_dir_all(root.join("covers"));
+}
+
+/// 封面缩略图文件名：用元数据书名，便于人工识别；非法字符替换为下划线
+fn safe_cover_name(title: &str) -> String {
+    let mut s: String = title
+        .trim()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    if s.chars().count() > 80 {
+        s = s.chars().take(80).collect();
+    }
+    if s.trim().is_empty() {
+        s = "未命名".to_string();
+    }
+    s
+}
+
+/// 把封面压成 240px JPEG 字节（预置库内嵌与导出封面共用）
+fn cover_thumb_jpeg(path: &str) -> Option<Vec<u8>> {
     let img = image::open(path).ok()?;
     let img = if img.width() > 240 {
         let h = ((img.height() as f64) * 240.0 / (img.width() as f64)).round().max(1.0) as u32;
@@ -682,16 +704,21 @@ fn cover_thumb_b64(path: &str) -> Option<String> {
     let mut buf = Vec::new();
     let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 82);
     enc.encode_image(&img.to_rgb8()).ok()?;
-    Some(base64::engine::general_purpose::STANDARD.encode(&buf))
+    Some(buf)
 }
 
 /// 导出当前书库全部元数据为外部预置库（覆盖原文件），返回文件路径。
-/// 外部预置库在下次启动时生效；也可拷贝到其他设备使用。
+/// 外部预置库在下次启动时生效；封面同时按书名写入 covers 目录，便于人工识别。
 #[tauri::command]
 fn export_metadata_presets(state: tauri::State<'_, db::Db>) -> Result<String, String> {
     let conn = state.0.lock().unwrap();
     let books = db::list_books(&conn)?;
     let mut presets: Vec<MetaPreset> = Vec::new();
+    let cover_dir = preset_covers_dir();
+    if fs::create_dir_all(&cover_dir).is_err() {
+        return Err("无法创建封面目录".into());
+    }
+    let mut used_cover_names: HashSet<String> = HashSet::new();
     for b in &books {
         if b.title.trim().is_empty() {
             continue;
@@ -700,12 +727,26 @@ fn export_metadata_presets(state: tauri::State<'_, db::Db>) -> Result<String, St
             .file_name()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let cover_b64 = b
+        let cover_bytes = b
             .cover
             .as_deref()
             .filter(|p| Path::new(p).is_file())
-            .and_then(cover_thumb_b64)
+            .and_then(cover_thumb_jpeg);
+        let cover_b64 = cover_bytes
+            .as_deref()
+            .map(|b| base64::engine::general_purpose::STANDARD.encode(b))
             .unwrap_or_default();
+        // 按书名写一份封面文件（重名自动加序号）
+        if let Some(bytes) = &cover_bytes {
+            let base = safe_cover_name(&b.title);
+            let mut fname = format!("{base}.jpg");
+            let mut n = 2;
+            while !used_cover_names.insert(fname.clone()) {
+                fname = format!("{base} ({n}).jpg");
+                n += 1;
+            }
+            let _ = fs::write(cover_dir.join(&fname), bytes);
+        }
         presets.push(MetaPreset {
             title: b.title.clone(),
             author: b.author.clone(),
@@ -739,7 +780,7 @@ fn is_preset_fill(b: &db::BookRow, presets: &HashMap<String, MetaPreset>) -> boo
     })
 }
 
-/// 按规范化文件名匹配内置预置库，填入预置数据（含内嵌封面）。
+/// 按规范化文件名匹配外部预置库，填入预置数据（含内嵌封面）。
 /// 仅对完全没有元数据的书生效；若元数据恰好等于某个预置条目（旧版误填），
 /// 也允许重新匹配纠正，匹配不上时清空以免继续显示错误的预置数据。
 fn maybe_fill_preset_meta(conn: &rusqlite::Connection, path: &str) {
@@ -5260,9 +5301,12 @@ pub fn run() {
     env_logger::init();
     // 打开工作目录下的 SQLite 数据库（书籍信息/书库/位置/设置/应用状态统一存这里）
     let work = work_dir();
-    // Android：先把暂存的元数据迁移导入（数据库 + 封面），再打开库
+    // Android：先确保 E-Books 预置/封面目录存在，再导入暂存迁移
     #[cfg(target_os = "android")]
-    import_staged_migration(&work);
+    {
+        ensure_android_ebook_dirs();
+        import_staged_migration(&work);
+    }
     let conn = db::open(&work).expect("打开书库数据库失败");
     // 一次性迁移旧数据（.cshow / favorites / 应用配置 → DB），备份后删除旧文件
     if let Err(e) = migrate_legacy_to_db(&conn, &work) {
