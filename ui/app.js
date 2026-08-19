@@ -1310,13 +1310,27 @@ function buildTocPanel() {
   for (const item of toc) {
     if (isTocJunkRow(item.label, epubMeta && epubMeta.title)) continue;
     const d = item.depth || 1;
+    if (hierarchical) {
+      // 层级书只保留两层：卷（depth1 卷行）→ 章（depth2 章节行）；节/序言/附录等一律忽略
+      if (d === 1 && isTocVolumeLabel(item.label)) {
+        cur = { header: item, items: [] };
+        groups.push(cur);
+      } else if (d === 2 && isTocChapterLabel(item.label)) {
+        if (!cur) {
+          cur = { header: null, items: [] };
+          groups.push(cur);
+        }
+        cur.items.push(item);
+      }
+      continue;
+    }
     const emb = extractEmbeddedVolLabel(item.label);
     if (d <= 1) {
       chapter = null;
       if (isTocVolumeLabel(item.label) || emb) {
         const volKey = emb || item.label;
         const sameVol = cur && cur.header && (cur.header.__emb || cur.header.label) === volKey;
-        if (emb && sameVol && !hierarchical) {
+        if (emb && sameVol) {
           cur.items.push(item); // 同一内嵌集下的章节并入
         } else {
           cur = emb
@@ -1324,10 +1338,6 @@ function buildTocPanel() {
             : { header: item, items: [] };
           groups.push(cur);
         }
-      } else if (hierarchical) {
-        // 层级书中的卷级独立条目（前言/附录/脚注…）：单独成行，不并入前一个卷
-        cur = { header: null, items: [item] };
-        groups.push(cur);
       } else {
         if (!cur) {
           cur = { header: null, items: [] };
