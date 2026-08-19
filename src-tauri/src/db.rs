@@ -311,6 +311,16 @@ pub fn get_book(conn: &Connection, path: &str) -> Result<Option<BookRow>, String
         .map_err(|e| e.to_string())
 }
 
+/// 列出所有书（同步匹配书名时一次性加载用；个人书库量级很小，直接全量读）
+pub fn list_books(conn: &Connection) -> Result<Vec<BookRow>, String> {
+    let q = format!("SELECT {} FROM books", BOOK_COLS);
+    let mut stmt = conn.prepare(&q).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], book_from_row)
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
 /// 书库中所有 EPUB/TXT 文件路径（散装与分卷），用于计算解包缓存 key
 /// （TXT 解析产物也存放在同一个 epub 缓存目录）
 pub fn list_epub_paths(conn: &Connection) -> Result<Vec<String>, String> {
@@ -333,6 +343,7 @@ pub struct PositionRow {
     pub mode: String,
     pub finished: bool,
     pub progress: Option<f64>,
+    pub updated_at: u64,
 }
 
 pub fn upsert_position(
@@ -345,13 +356,28 @@ pub fn upsert_position(
     finished: bool,
     progress: Option<f64>,
 ) -> Result<(), String> {
+    upsert_position_at(conn, volume_path, kind, page, total, mode, finished, progress, now_secs())
+}
+
+/// 带时间戳写入（远端同步时保留对方的上报时间，用于新旧判断）
+pub fn upsert_position_at(
+    conn: &Connection,
+    volume_path: &str,
+    kind: &str,
+    page: u32,
+    total: u32,
+    mode: &str,
+    finished: bool,
+    progress: Option<f64>,
+    at: u64,
+) -> Result<(), String> {
     conn.execute(
         "INSERT INTO positions (volume_path, kind, page, total, mode, finished, progress, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
          ON CONFLICT(volume_path) DO UPDATE SET
            kind=excluded.kind, page=excluded.page, total=excluded.total,
            mode=excluded.mode, finished=excluded.finished, progress=excluded.progress, updated_at=excluded.updated_at",
-        params![volume_path, kind, page as i64, total as i64, mode, finished as i64, progress, now_secs() as i64],
+        params![volume_path, kind, page as i64, total as i64, mode, finished as i64, progress, at as i64],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -359,7 +385,7 @@ pub fn upsert_position(
 
 pub fn get_position(conn: &Connection, volume_path: &str) -> Result<Option<PositionRow>, String> {
     conn.query_row(
-        "SELECT kind, page, total, mode, finished, progress FROM positions WHERE volume_path = ?1",
+        "SELECT kind, page, total, mode, finished, progress, updated_at FROM positions WHERE volume_path = ?1",
         params![volume_path],
         |r| {
             Ok(PositionRow {
@@ -369,6 +395,7 @@ pub fn get_position(conn: &Connection, volume_path: &str) -> Result<Option<Posit
                 mode: r.get(3)?,
                 finished: r.get::<_, i64>(4)? != 0,
                 progress: r.get(5)?,
+                updated_at: r.get::<_, i64>(6)? as u64,
             })
         },
     )

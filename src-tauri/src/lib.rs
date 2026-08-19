@@ -2576,11 +2576,239 @@ fn save_volume_position(state: tauri::State<'_, db::Db>, ebook_dir: String, volu
         (ebook_dir.clone(), "dir")
     };
     db::ensure_book(&conn, &book_path, book_kind)?;
-    let now = std::time::SystemTime::now()
+    let now = now_secs();
+    db::set_last_read(&conn, &book_path, Some(&volume_path), now)?;
+    // 退出阅读时把进度快照推到 ntfy，其他设备启动时拉取合并
+    if let Some(entry) = build_sync_entry(&conn, &book_path, &volume_path, &kind, page, total, &mode, finished, progress, now) {
+        let topic = sync_topic(&conn);
+        push_sync_entry(entry, topic);
+    }
+    Ok(())
+}
+
+// ---- 阅读进度跨设备同步（ntfy 轻量方案）----
+
+const SYNC_BASE_URL: &str = "https://ntfy.sh";
+const SYNC_TOPIC: &str = "wamxev-Safsys-cynry2-sync";
+const SYNC_STATE_KEY: &str = "sync_last_ts";
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// 同步主题：默认内置，允许通过 app_state.sync_topic 覆盖（避免主题硬编码在客户端）
+fn sync_topic(conn: &rusqlite::Connection) -> String {
+    db::get_app_state(conn, "sync_topic")
+        .ok()
+        .flatten()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| SYNC_TOPIC.to_string())
+}
+
+#[derive(Serialize, Deserialize)]
+struct SyncEntry {
+    v: u32,
+    device: String,
+    title: String,
+    kind: String,
+    vol: String,
+    page: u32,
+    total: u32,
+    progress: Option<f64>,
+    mode: String,
+    finished: bool,
+    at: u64,
+}
+
+/// 构造一条进度快照；取不到标题/卷名时返回 None（该卷不参与同步）
+fn build_sync_entry(
+    conn: &rusqlite::Connection,
+    book_path: &str,
+    volume_path: &str,
+    kind: &str,
+    page: u32,
+    total: u32,
+    mode: &str,
+    finished: bool,
+    progress: Option<f64>,
+    at: u64,
+) -> Option<SyncEntry> {
+    let vol = Path::new(volume_path)
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())?;
+    let title = db::get_book(conn, book_path)
+        .ok()
+        .flatten()
+        .map(|b| b.title)
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or_else(|| {
+            Path::new(volume_path)
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        });
+    if title.trim().is_empty() {
+        return None;
+    }
+    Some(SyncEntry {
+        v: 1,
+        device: if cfg!(target_os = "android") {
+            "android".to_string()
+        } else {
+            "mac".to_string()
+        },
+        title,
+        kind: kind.to_string(),
+        vol,
+        page,
+        total,
+        progress,
+        mode: mode.to_string(),
+        finished,
+        at,
+    })
+}
+
+/// 后台推送进度快照（失败静默，不影响阅读退出）
+fn push_sync_entry(entry: SyncEntry, topic: String) {
+    std::thread::spawn(move || {
+        let Ok(body) = serde_json::to_string(&entry) else { return };
+        let url = format!("{}/{}", SYNC_BASE_URL, topic);
+        let _ = ureq::post(&url)
+            .timeout(Duration::from_secs(5))
+            .set("Title", "SnackRead 进度")
+            .set("Content-Type", "application/json")
+            .send_string(&body);
+    });
+}
+
+#[derive(Deserialize)]
+struct NtfyMessage {
+    #[serde(default)]
+    event: String,
+    #[serde(default)]
+    time: u64,
+    #[serde(default)]
+    message: String,
+}
+
+/// 把远端快照定位到本地卷：按规范化书名找候选书，再用卷文件名精确定位；
+/// 只有唯一命中才应用，避免同名书/错误元数据导致进度串书。
+fn resolve_sync_volume(books: &[db::BookRow], entry: &SyncEntry) -> Option<(String, String)> {
+    if entry.vol.trim().is_empty() {
+        return None;
+    }
+    let want = norm_title_key(&entry.title);
+    let mut hits: Vec<(String, String)> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for b in books {
+        if norm_title_key(&b.title) != want {
+            continue;
+        }
+        let bp = Path::new(&b.path);
+        let book_base = bp
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        // 散装书 / 整目录即一卷：卷名 == 书名基名
+        if book_base == entry.vol {
+            let vp = b.path.clone();
+            if seen.insert(vp.clone()) {
+                hits.push((vp, b.path.clone()));
+            }
+        }
+        // 目录书：卷 = 书目录/卷名
+        let sub = bp.join(&entry.vol);
+        if sub.is_file() || sub.is_dir() {
+            let vp = norm_path(&sub);
+            if seen.insert(vp.clone()) {
+                hits.push((vp, b.path.clone()));
+            }
+        }
+    }
+    if hits.len() == 1 {
+        Some(hits.pop().unwrap())
+    } else {
+        None
+    }
+}
+
+/// 启动时拉取 ntfy 进度并合并（异步后台执行，不阻塞界面）
+#[tauri::command]
+async fn sync_pull(app: tauri::AppHandle) -> Result<usize, String> {
+    tauri::async_runtime::spawn_blocking(move || sync_pull_impl(&app))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn sync_pull_impl(app: &tauri::AppHandle) -> Result<usize, String> {
+    let state = app.state::<db::Db>();
+    let conn = state.0.lock().unwrap();
+    let topic = sync_topic(&conn);
+    let last_ts: u64 = db::get_app_state(&conn, SYNC_STATE_KEY)
+        .ok()
+        .flatten()
+        .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0);
-    db::set_last_read(&conn, &book_path, Some(&volume_path), now)
+    let since = if last_ts == 0 {
+        "all".to_string()
+    } else {
+        last_ts.to_string()
+    };
+    let url = format!("{}/{}/json?poll=1&since={}", SYNC_BASE_URL, topic, since);
+    let resp = ureq::get(&url)
+        .timeout(Duration::from_secs(6))
+        .call()
+        .map_err(|e| format!("ntfy 拉取失败: {e}"))?;
+    let text = resp.into_string().map_err(|e| e.to_string())?;
+    let msgs: Vec<NtfyMessage> =
+        serde_json::from_str(&text).map_err(|e| format!("ntfy 消息解析失败: {e}"))?;
+    let books = db::list_books(&conn)?;
+    let mut msgs: Vec<NtfyMessage> = msgs
+        .into_iter()
+        .filter(|m| m.event == "message" && m.time > last_ts)
+        .collect();
+    msgs.sort_by_key(|m| m.time);
+    let mut max_ts = last_ts;
+    let mut applied = 0usize;
+    for m in &msgs {
+        max_ts = max_ts.max(m.time);
+        let Ok(entry) = serde_json::from_str::<SyncEntry>(&m.message) else {
+            continue;
+        };
+        if entry.v != 1 {
+            continue;
+        }
+        let Some((vpath, book_path)) = resolve_sync_volume(&books, &entry) else {
+            continue;
+        };
+        if let Some(pos) = db::get_position(&conn, &vpath).ok().flatten() {
+            if pos.updated_at >= entry.at {
+                continue; // 本地不旧于远端，跳过
+            }
+        }
+        db::upsert_position_at(
+            &conn,
+            &vpath,
+            &entry.kind,
+            entry.page,
+            entry.total,
+            &entry.mode,
+            entry.finished,
+            entry.progress,
+            entry.at,
+        )?;
+        db::set_last_read(&conn, &book_path, Some(&vpath), entry.at)?;
+        applied += 1;
+    }
+    if max_ts > last_ts {
+        db::set_app_state(&conn, SYNC_STATE_KEY, &max_ts.to_string())?;
+    }
+    Ok(applied)
 }
 
 #[derive(Serialize, serde::Deserialize)]
@@ -5256,6 +5484,7 @@ pub fn run() {
             save_cwd,
             save_position,
             read_position,
+            sync_pull,
             toggle_ebook,
             toggle_eye,
             list_favorites,
