@@ -623,7 +623,7 @@ body.reading.ctl-on #toc-panel {
   display: flex; align-items: center; gap: 6px; min-width: 0;
 }
 #list-grid.list .lib-card .card-title-row .name {
-  flex: 1; min-width: 0;
+  flex: 0 1 auto; min-width: 0; /* 不撑满整行，让类型胶囊紧贴书名 */
 }
 #list-grid.list .lib-card .name {
   margin-top: 0; font-size: 13px; color: var(--text); text-align: left;
