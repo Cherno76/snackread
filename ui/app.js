@@ -1251,7 +1251,33 @@ function isTocVolumeLabel(s) {
   return /(卷|册|部|季|合集)/.test(s)
     || /[0-9一二三四五六七八九十百]+\s*[:：]/.test(s)
     || /^.{2,10}之.+/.test(s)
-    || /^(Book|Part|Volume|Vol\.?|Section)\s+\S+/i.test(s);
+    || /^(Book|Part|Volume|Vol\.?|Section)\s+\S+/i.test(s)
+    // 独立「第X集」卷行（后面不带「第X章」才算卷行，否则是内嵌卷的章节标题）
+    || /^第\s*[0-9一二三四五六七八九十百零]+集(?!.*第\s*[0-9一二三四五六七八九十百零]+章)/.test(s);
+}
+
+// 章节标题内嵌的卷标记：如「第一集 误入天庭 第一章」→「第一集 误入天庭」；
+// 无内嵌卷标记返回 null
+function extractEmbeddedVolLabel(s) {
+  if (!s) return null;
+  const t = s.trim();
+  const m = /^第\s*[0-9一二三四五六七八九十百零]+集(?:\s+([^第\s]\S*))?/.exec(t);
+  if (!m) return null;
+  const parts = [m[0].trim()];
+  // 集名里可能还有后续词（如「星星宫·寒冰原」），遇到「第X章」为止
+  const rest = t.slice(m.index + m[0].length);
+  for (const w of rest.split(/\s+/).filter(Boolean)) {
+    if (/^第\s*[0-9一二三四五六七八九十百零]+章/.test(w)) break;
+    parts.push(w);
+  }
+  return parts.join(' ');
+}
+
+// 封面页/书名页等非章节条目（标题页、封面、版权、目录页）
+function isTocJunkRow(label, title) {
+  if (!label) return false;
+  const t = label.trim();
+  return !!title && t === title || ['封面', '简介', '版权', '目录'].includes(t);
 }
 
 function buildTocPanel() {
@@ -1269,8 +1295,20 @@ function buildTocPanel() {
   const groups = [];
   let cur = null;
   for (const item of toc) {
+    if (isTocJunkRow(item.label, epubMeta && epubMeta.title)) continue;
     if (isTocVolumeLabel(item.label)) {
       cur = { header: item, items: [] };
+      groups.push(cur);
+      continue;
+    }
+    // 章节标题内嵌卷标记（如「第一集 误入天庭 第一章」）：按集分组折叠
+    const emb = extractEmbeddedVolLabel(item.label);
+    const curVol = cur && cur.header ? (cur.header.__emb || cur.header.label) : null;
+    if (emb && (!cur || !cur.header || curVol !== emb)) {
+      cur = {
+        header: { chapter: item.chapter, anchor: item.anchor || '', label: emb, __emb: emb },
+        items: [item],
+      };
       groups.push(cur);
     } else {
       if (!cur) {
@@ -1600,6 +1638,7 @@ function computeTextVolumes() {
   const markers = [];
   for (let i = 0; i < toc.length; i++) {
     const cur = toc[i].label || '';
+    if (isTocJunkRow(cur, epubMeta && epubMeta.title)) continue;
     // 显式卷标记（不强依赖后一条是章节）：中文卷/册/部/季/合集、数字+冒号
     // （民调局异闻录2:清河鬼戏）、“书名之卷名”（鬼吹灯之龙岭迷窟）、英文 Book/Part/Volume 前缀
     // （Book 1 by The Philosopher s Stone）
@@ -1631,6 +1670,10 @@ function computeTextVolumes() {
         }
       }
       markers.push({ chapter: toc[i].chapter, name });
+    } else {
+      // 章节标题内嵌卷标记（如「第一集 误入天庭 第一章」）：该章即属于此集
+      const emb = extractEmbeddedVolLabel(cur);
+      if (emb) markers.push({ chapter: toc[i].chapter, name: emb });
     }
   }
   for (let ch = 0; ch < epubMeta.spine.length; ch++) {

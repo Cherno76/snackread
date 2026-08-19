@@ -1,6 +1,6 @@
 [package]
 name = "cshow-gui"
-version = "0.5.44"
+version = "0.5.45"
 description = "cshow 的 GUI 版：条漫丝滑度实验"
 edition = "2021"
 
