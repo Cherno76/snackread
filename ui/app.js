@@ -4652,7 +4652,7 @@ function makeLibCard(b, onOpen) {
     titleRow.appendChild(label);
     if (type) {
       const pill = document.createElement('span');
-      pill.className = 'type-pill';
+      pill.className = 'type-pill t-' + type.toLowerCase();
       pill.textContent = type;
       titleRow.appendChild(pill);
     }
@@ -4671,7 +4671,7 @@ function makeLibCard(b, onOpen) {
     if (b.is_dir) card.appendChild(refresh);
     if (type) {
       const pill = document.createElement('span');
-      pill.className = 'type-pill';
+      pill.className = 'type-pill t-' + type.toLowerCase();
       pill.textContent = type;
       thumbWrap.appendChild(pill);
     }

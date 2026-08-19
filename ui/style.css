@@ -894,6 +894,16 @@ body.reading.ctl-on #toc-panel {
     text-shadow: 0 0 2px rgba(0, 0, 0, .6);
   }
 }
+/* 格式胶囊配色：txt 浅蓝 / pdf 珊瑚红 / epub 薄荷绿，白字 */
+.lib-card .type-pill.t-txt {
+  background: #86A8E7; color: #fff; border-color: transparent; text-shadow: none;
+}
+.lib-card .type-pill.t-pdf {
+  background: #E78686; color: #fff; border-color: transparent; text-shadow: none;
+}
+.lib-card .type-pill.t-epub {
+  background: #72C888; color: #fff; border-color: transparent; text-shadow: none;
+}
 #meta-stars { display: flex; align-items: center; gap: 2px; }
 .meta-star {
   background: none; border: none; cursor: pointer; padding: 2px; color: var(--gold);
