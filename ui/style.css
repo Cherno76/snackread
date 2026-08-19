@@ -421,6 +421,8 @@ body.reading.ctl-on #toc-panel {
 #toc-list li.toc-vol::before { content: '▸ '; color: var(--muted); font-size: 12px; }
 #toc-list li.toc-vol.expanded::before { content: '▾ '; }
 #toc-list li.toc-child { padding-left: 34px; font-size: 12px; }
+#toc-list li.toc-chapter { font-weight: 600; }
+#toc-list li.toc-section { padding-left: 48px; font-size: 12px; }
 #toc-list li[hidden] { display: none; }
 #toc-list li.toc-empty { color: var(--muted); cursor: default; }
 /* 文字书翻页：章节占满视口，分页在 iframe 内部进行 */

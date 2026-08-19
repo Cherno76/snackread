@@ -1461,7 +1461,7 @@ fn analyze_epub_toc(src: &Path) -> Result<TocFixReport, String> {
 
     let mut total = 0usize;
     let mut mispointed = 0usize;
-    for (_, src) in &links {
+    for (_, src, _) in &links {
         let Some((clean, anchor)) = src.split_once('#') else { continue };
         if anchor.is_empty() {
             continue;
@@ -1596,7 +1596,7 @@ fn rebuild_broken_epub_in(src: &Path, backup_root: &Path) -> Result<TocFixReport
         .unwrap_or_default();
     let links = extract_toc_links(&ncx_text);
     let mut wanted: HashSet<String> = HashSet::new();
-    for (_, src) in &links {
+    for (_, src, _) in &links {
         if let Some((_, a)) = src.split_once('#') {
             if !a.is_empty() {
                 wanted.insert(a.to_string());
@@ -1700,7 +1700,7 @@ fn rebuild_broken_epub_in(src: &Path, backup_root: &Path) -> Result<TocFixReport
 
     // 新 NCX：目录 1:1 指向新章节文件
     let mut ncx_lines: Vec<String> = Vec::new();
-    for (i, (label, src)) in links.iter().enumerate() {
+    for (i, (label, src, _)) in links.iter().enumerate() {
         let target = if let Some((tf, a)) = src.split_once('#') {
             anchor2file
                 .get(a)
@@ -2305,6 +2305,13 @@ struct TocEntry {
     /// NCX/nav 条目指向的文件内锚点（如 #filepos0000004886），用于定位文件内章节
     #[serde(default)]
     anchor: Option<String>,
+    /// 目录嵌套层级（1 = 顶层；EPUB2/3 有嵌套时 2/3…），用于前端按卷/章/节折叠
+    #[serde(default = "default_toc_depth")]
+    depth: u32,
+}
+
+fn default_toc_depth() -> u32 {
+    1
 }
 
 #[derive(Serialize, serde::Deserialize)]
@@ -3150,7 +3157,7 @@ fn text_and_image_stats(html: &str) -> (usize, usize) {
 }
 
 /// 从 nav(XHTML) 或 NCX 文本中提取平铺目录 (label, href)
-fn extract_toc_links(text: &str) -> Vec<(String, String)> {
+fn extract_toc_links(text: &str) -> Vec<(String, String, u32)> {
     let mut out = Vec::new();
     let lower = text.to_ascii_lowercase();
     // EPUB3 nav：<a href="...">label</a>
@@ -3166,7 +3173,11 @@ fn extract_toc_links(text: &str) -> Vec<(String, String)> {
             let content_end = content_start + endrel;
             let label = strip_tags(&text[content_start..content_end]).trim().to_string();
             if !label.is_empty() {
-                out.push((label, href));
+                // 层级 = 外层 <ol> 数（EPUB3 nav 用嵌套列表表达层级）
+                let depth = (lower[..start].matches("<ol").count() as i32
+                    - lower[..start].matches("</ol").count() as i32)
+                    .max(1) as u32;
+                out.push((label, href, depth));
             }
             idx = content_end + 3;
         } else {
@@ -3195,7 +3206,11 @@ fn extract_toc_links(text: &str) -> Vec<(String, String)> {
             .unwrap_or_default();
         let href = attr_value(block, "src").unwrap_or_default();
         if !label.is_empty() && !href.is_empty() {
-            out.push((label, href));
+            // 层级 = 外层 <navPoint> 数（EPUB2 NCX 用嵌套 navPoint 表达层级）
+            let depth = (lower[..np_start].matches("<navpoint").count() as i32
+                - lower[..np_start].matches("</navpoint>").count() as i32)
+                .max(1) as u32;
+            out.push((label, href, depth));
         }
         idx = np_end + 10;
     }
@@ -3266,13 +3281,13 @@ fn parse_toc(
         }
     }
 
-    let mut links: Vec<(String, usize, Option<String>)> = Vec::new();
+    let mut links: Vec<(String, usize, Option<String>, u32)> = Vec::new();
     if let Some(tf) = &toc_file {
         // NCX/nav 的 href 同样相对 OPF 目录，先规范化成相对解包根再读
         let tf_abs = join_rel(opf_dir, tf);
         let toc_dir = parent_dir(&tf_abs);
         if let Ok(text) = fs::read_to_string(base.join(&tf_abs)) {
-            for (label, href) in extract_toc_links(&text) {
+            for (label, href, depth) in extract_toc_links(&text) {
                 let (clean, anchor) = match href.split_once('#') {
                     Some((c, a)) => (c.to_string(), Some(a.to_string())),
                     None => (href.clone(), None),
@@ -3294,14 +3309,14 @@ fn parse_toc(
                             }
                         }
                     }
-                    links.push((label, target_ch, anchor));
+                            links.push((label, target_ch, anchor, depth));
                 }
             }
         }
     }
 
     let mut chapter_titles: Vec<String> = vec![String::new(); spine.len()];
-    for (label, ch, _) in &links {
+    for (label, ch, _, _) in &links {
         if chapter_titles[*ch].is_empty() {
             chapter_titles[*ch] = label.clone();
         }
@@ -3321,7 +3336,12 @@ fn parse_toc(
 
     let toc: Vec<TocEntry> = links
         .into_iter()
-        .map(|(label, chapter, anchor)| TocEntry { label, chapter, anchor })
+        .map(|(label, chapter, anchor, depth)| TocEntry {
+            label,
+            chapter,
+            anchor,
+            depth,
+        })
         .collect();
     (toc, chapter_titles)
 }
@@ -3762,7 +3782,7 @@ fn parse_txt_book(src: &Path, base: &Path) -> Result<EpubMeta, String> {
         chapters = fallback_txt_chapters(&lines);
         volumes.push(TxtVolume { label: String::new() });
         for (i, ch) in chapters.iter().enumerate() {
-            toc.push(TocEntry { label: ch.title.clone(), chapter: i, anchor: None });
+            toc.push(TocEntry { label: ch.title.clone(), chapter: i, anchor: None, depth: 1 });
         }
     } else {
         volumes.push(TxtVolume { label: String::new() });
@@ -3778,7 +3798,7 @@ fn parse_txt_book(src: &Path, base: &Path) -> Result<EpubMeta, String> {
                         if let Some(p) = pending.take() {
                             let idx = chapters.len();
                             chapters.push(make_txt_chapter(&lines, p, h.line, idx));
-                            toc.push(TocEntry { label: p.raw.clone(), chapter: idx, anchor: None });
+                            toc.push(TocEntry { label: p.raw.clone(), chapter: idx, anchor: None, depth: 1 });
                             vol_chapter_counts[cur_vol] += 1;
                         }
                         continue;
@@ -3787,18 +3807,18 @@ fn parse_txt_book(src: &Path, base: &Path) -> Result<EpubMeta, String> {
                 if let Some(p) = pending.take() {
                     let idx = chapters.len();
                     chapters.push(make_txt_chapter(&lines, p, h.line, idx));
-                    toc.push(TocEntry { label: p.raw.clone(), chapter: idx, anchor: None });
+                    toc.push(TocEntry { label: p.raw.clone(), chapter: idx, anchor: None, depth: 1 });
                     vol_chapter_counts[cur_vol] += 1;
                 }
                 volumes.push(TxtVolume { label: h.raw.clone() });
-                toc.push(TocEntry { label: h.raw.clone(), chapter: chapters.len(), anchor: None });
+                toc.push(TocEntry { label: h.raw.clone(), chapter: chapters.len(), anchor: None, depth: 1 });
                 vol_chapter_counts.push(0);
                 cur_vol = volumes.len() - 1;
             } else {
                 if let Some(p) = pending.take() {
                     let idx = chapters.len();
                     chapters.push(make_txt_chapter(&lines, p, h.line, idx));
-                    toc.push(TocEntry { label: p.raw.clone(), chapter: idx, anchor: None });
+                    toc.push(TocEntry { label: p.raw.clone(), chapter: idx, anchor: None, depth: 1 });
                     vol_chapter_counts[cur_vol] += 1;
                 }
                 pending = Some(h);
@@ -3807,7 +3827,7 @@ fn parse_txt_book(src: &Path, base: &Path) -> Result<EpubMeta, String> {
         if let Some(p) = pending.take() {
             let idx = chapters.len();
             chapters.push(make_txt_chapter(&lines, p, lines.len(), idx));
-            toc.push(TocEntry { label: p.raw.clone(), chapter: idx, anchor: None });
+            toc.push(TocEntry { label: p.raw.clone(), chapter: idx, anchor: None, depth: 1 });
             vol_chapter_counts[cur_vol] += 1;
         }
         // 有显式卷标记且默认卷没有任何章节时，去掉空默认卷
@@ -4644,13 +4664,13 @@ mod tests {
         let nav = r#"<nav><ol><li><a href="chap1.xhtml">第一章</a></li><li><a href="chap2.xhtml#s2">第二章</a></li></ol></nav>"#;
         let links = extract_toc_links(nav);
         assert_eq!(links.len(), 2);
-        assert_eq!(links[0], ("第一章".to_string(), "chap1.xhtml".to_string()));
-        assert_eq!(links[1], ("第二章".to_string(), "chap2.xhtml#s2".to_string()));
+        assert_eq!(links[0], ("第一章".to_string(), "chap1.xhtml".to_string(), 1));
+        assert_eq!(links[1], ("第二章".to_string(), "chap2.xhtml#s2".to_string(), 1));
 
         let ncx = r#"<navPoint><navLabel><text>Intro</text></navLabel><content src="intro.xhtml"/></navPoint>"#;
         let links2 = extract_toc_links(ncx);
         assert_eq!(links2.len(), 1);
-        assert_eq!(links2[0], ("Intro".to_string(), "intro.xhtml".to_string()));
+        assert_eq!(links2[0], ("Intro".to_string(), "intro.xhtml".to_string(), 1));
     }
 
     #[test]

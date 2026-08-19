@@ -1301,31 +1301,53 @@ function buildTocPanel() {
     return;
   }
   tocAnchorsByChapter = {};
-  // 1) 按卷/册标题分组；无卷标记的书保持平铺
+  // 是否有嵌套目录（NCX/nav 的层级 2+）：有则按 卷→章→节 组织，无则保持平铺+卷标记
+  const hierarchical = toc.some(t => (t.depth || 1) > 1);
+  // 1) 分组：卷（depth1 卷行/内嵌集名）→ 章（depth2）→ 节（depth3+）
   const groups = [];
   let cur = null;
+  let chapter = null; // 当前章 {item, children[]}（仅层级书使用）
   for (const item of toc) {
     if (isTocJunkRow(item.label, epubMeta && epubMeta.title)) continue;
-    if (isTocVolumeLabel(item.label)) {
-      cur = { header: item, items: [] };
-      groups.push(cur);
+    const d = item.depth || 1;
+    const emb = extractEmbeddedVolLabel(item.label);
+    if (d <= 1) {
+      chapter = null;
+      if (isTocVolumeLabel(item.label) || emb) {
+        const volKey = emb || item.label;
+        const sameVol = cur && cur.header && (cur.header.__emb || cur.header.label) === volKey;
+        if (emb && sameVol && !hierarchical) {
+          cur.items.push(item); // 同一内嵌集下的章节并入
+        } else {
+          cur = emb
+            ? { header: { chapter: item.chapter, anchor: item.anchor || '', label: emb, __emb: emb }, items: [item] }
+            : { header: item, items: [] };
+          groups.push(cur);
+        }
+      } else if (hierarchical) {
+        // 层级书中的卷级独立条目（前言/附录/脚注…）：单独成行，不并入前一个卷
+        cur = { header: null, items: [item] };
+        groups.push(cur);
+      } else {
+        if (!cur) {
+          cur = { header: null, items: [] };
+          groups.push(cur);
+        }
+        cur.items.push(item);
+      }
       continue;
     }
-    // 章节标题内嵌卷标记（如「第一集 误入天庭 第一章」）：按集分组折叠
-    const emb = extractEmbeddedVolLabel(item.label);
-    const curVol = cur && cur.header ? (cur.header.__emb || cur.header.label) : null;
-    if (emb && (!cur || !cur.header || curVol !== emb)) {
-      cur = {
-        header: { chapter: item.chapter, anchor: item.anchor || '', label: emb, __emb: emb },
-        items: [item],
-      };
+    // d >= 2：章/节，挂在当前卷组（无卷组则建平铺组）
+    if (!cur) {
+      cur = { header: null, items: [] };
       groups.push(cur);
+    }
+    if (d === 2) {
+      chapter = isTocChapterLabel(item.label) ? { item, children: [] } : null;
+      cur.items.push(chapter || item);
     } else {
-      if (!cur) {
-        cur = { header: null, items: [] };
-        groups.push(cur);
-      }
-      cur.items.push(item);
+      if (chapter) chapter.children.push(item);
+      else cur.items.push(item);
     }
   }
   tocGroups = groups;
@@ -1350,32 +1372,49 @@ function buildTocPanel() {
   tocGroupRows = [];
   const frag = document.createDocumentFragment();
   groups.forEach((g, gi) => {
-    if (!g.header) {
-      // 首卷之前的章节：平铺显示
-      for (const item of g.items) frag.appendChild(makeTocItemEl(item));
-      return;
-    }
-    const collapsed = gi !== expandedGi;
+    const collapsed = !!g.header && gi !== expandedGi;
     if (collapsed) tocCollapsed.add(gi);
-    const headerEl = document.createElement('li');
-    headerEl.className = 'toc-vol' + (collapsed ? '' : ' expanded');
-    headerEl.textContent = g.header.label;
-    headerEl.dataset.chapter = String(g.header.chapter);
-    headerEl.dataset.anchor = g.header.anchor || '';
-    if (g.header.anchor) {
-      (tocAnchorsByChapter[g.header.chapter] = tocAnchorsByChapter[g.header.chapter] || []).push(g.header.anchor);
+    let headerEl = null;
+    if (g.header) {
+      headerEl = document.createElement('li');
+      headerEl.className = 'toc-vol' + (collapsed ? '' : ' expanded');
+      headerEl.textContent = g.header.label;
+      headerEl.dataset.chapter = String(g.header.chapter);
+      headerEl.dataset.anchor = g.header.anchor || '';
+      if (g.header.anchor) {
+        (tocAnchorsByChapter[g.header.chapter] = tocAnchorsByChapter[g.header.chapter] || []).push(g.header.anchor);
+      }
+      frag.appendChild(headerEl); // 卷行放在该卷章节之前
     }
-    frag.appendChild(headerEl); // 卷行放在该卷章节之前
     const rows = [];
-    for (const item of g.items) {
-      const li = makeTocItemEl(item);
-      li.classList.add('toc-child');
-      if (collapsed) li.hidden = true;
-      rows.push(li);
-      frag.appendChild(li);
+    for (const unit of g.items) {
+      if (unit && unit.item) {
+        // 章 + 其下节
+        const li = makeTocItemEl(unit.item);
+        if (g.header) li.classList.add('toc-child');
+        li.classList.add('toc-chapter');
+        if (collapsed) li.hidden = true;
+        rows.push(li);
+        frag.appendChild(li);
+        for (const c of unit.children) {
+          const cl = makeTocItemEl(c);
+          cl.classList.add('toc-section');
+          if (collapsed) cl.hidden = true;
+          rows.push(cl);
+          frag.appendChild(cl);
+        }
+      } else {
+        const li = makeTocItemEl(unit);
+        if (g.header) li.classList.add('toc-child');
+        if (collapsed) li.hidden = true;
+        rows.push(li);
+        frag.appendChild(li);
+      }
     }
-    headerEl.addEventListener('click', () => toggleTocGroup(gi));
-    tocGroupRows.push({ headerEl, rows });
+    if (headerEl) {
+      headerEl.addEventListener('click', () => toggleTocGroup(gi));
+      tocGroupRows.push({ headerEl, rows });
+    }
   });
   tocListEl.appendChild(frag);
 }
