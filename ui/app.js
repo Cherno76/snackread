@@ -1273,6 +1273,16 @@ function extractEmbeddedVolLabel(s) {
   return parts.join(' ');
 }
 
+// 章节显示名：剥掉内嵌的「第X集 集名」前缀，只留「第X章 [名字]」
+// （如「第一集 误入天庭 第一章」→「第一章」；「第四集 … 第二章 重建家园」→「第二章 重建家园」）
+function tocChapterLabel(s) {
+  if (!s) return s;
+  const t = s.trim();
+  if (!extractEmbeddedVolLabel(t)) return s;
+  const m = /(第\s*[0-9一二三四五六七八九十百零]+章.*)$/.exec(t);
+  return m ? m[1].trim() : s;
+}
+
 // 封面页/书名页等非章节条目（标题页、封面、版权、目录页）
 function isTocJunkRow(label, title) {
   if (!label) return false;
@@ -1372,7 +1382,7 @@ function buildTocPanel() {
 
 function makeTocItemEl(item) {
   const li = document.createElement('li');
-  li.textContent = item.label;
+  li.textContent = tocChapterLabel(item.label);
   li.dataset.chapter = String(item.chapter);
   li.dataset.anchor = item.anchor || '';
   if (item.anchor) {
@@ -1550,10 +1560,12 @@ tocBackdropEl.addEventListener('click', closeTocPanel);
 function updateReadingChapterTitle() {
   if (!textBook || !epubMeta || focus !== 'strip') return;
   const ch = currentStripIndex();
-  const ct = (epubMeta.chapter_titles && epubMeta.chapter_titles[ch]) || '';
   // 当前卷名随章节更新（跨册时窗口标题/标签同步切换）
   const vn = textVolumeOf(ch);
   if (vn) winTitleVol = vn;
+  // 章节名剥掉内嵌集名前缀（有卷名时才剥，避免丢失上下文）
+  const ctRaw = (epubMeta.chapter_titles && epubMeta.chapter_titles[ch]) || '';
+  const ct = vn ? tocChapterLabel(ctRaw) : ctRaw;
   const base = vn || readingEl.dataset.base || readingEl.textContent || '';
   // 卷标记页的章节标题就是卷名本身（如 民调局异闻录2:清河鬼戏），避免重复显示
   const vnTail = vn ? vn.split(/[·•]/).pop().trim() : '';
@@ -1699,7 +1711,9 @@ function computeWindowTitle() {
   if (textBook && epubMeta) {
     // 文字书：书名后跟当前章节（含章节名）
     const ch = currentStripIndex();
-    const ct = (epubMeta.chapter_titles && epubMeta.chapter_titles[ch]) || '';
+    const vn = textVolumeOf(ch);
+    const ctRaw = (epubMeta.chapter_titles && epubMeta.chapter_titles[ch]) || '';
+    const ct = vn ? tocChapterLabel(ctRaw) : ctRaw;
     if (ct) t += ' · ' + ct;
   } else if (stripKind === 'pdf') {
     // PDF：没有章节概念，跟当前页码
