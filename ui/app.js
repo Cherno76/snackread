@@ -4913,7 +4913,7 @@ function makeVolCard(book, v, holders) {
   if (v.thumb) img.src = convertFileSrc(v.thumb);
   const s = splitBookName(v.name.replace(/\.(pdf|epub)$/i, ''));
   const label = document.createElement('div');
-  label.className = 'name';
+  label.className = 'name vol-name';
   label.textContent = s.volume || v.name;
   label.title = v.name;
   if (!v.thumb && holders) holders.set(v.path, { img, label });

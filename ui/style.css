@@ -702,6 +702,10 @@ body.reading.ctl-on #toc-panel {
   margin-top: 6px; font-size: 12px; text-align: center; color: var(--item);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* 卷卡片：册/卷名一行加粗斜体突出显示 */
+.lib-card .name.vol-name {
+  font-weight: 700; font-style: italic;
+}
 /* 封面左下角的进度胶囊（蓝底白字百分比） */
 .lib-card .thumb-wrap { position: relative; }
 .lib-card .donut {
