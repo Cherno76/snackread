@@ -1303,6 +1303,7 @@ function buildTocPanel() {
   tocAnchorsByChapter = {};
   // 是否有嵌套目录（NCX/nav 的层级 2+）：有则按 卷→章→节 组织，无则保持平铺+卷标记
   const hierarchical = toc.some(t => (t.depth || 1) > 1);
+  const minD = Math.min(...toc.map(t => t.depth || 1));
   // 1) 分组：卷（depth1 卷行/内嵌集名）→ 章（depth2）→ 节（depth3+）
   const groups = [];
   let cur = null;
@@ -1311,11 +1312,14 @@ function buildTocPanel() {
     if (isTocJunkRow(item.label, epubMeta && epubMeta.title)) continue;
     const d = item.depth || 1;
     if (hierarchical) {
-      // 层级书只保留两层：卷（depth1 卷行）→ 章（depth2 章节行）；节/序言/附录等一律忽略
-      if (d === 1 && isTocVolumeLabel(item.label)) {
+      // 层级书只保留两层：卷（顶层卷行）→ 章（章节行，任意层级）；节/序言/附录等一律忽略
+      if (d === minD && isTocVolumeLabel(item.label)) {
         cur = { header: item, items: [] };
         groups.push(cur);
-      } else if (d === 2 && isTocChapterLabel(item.label)) {
+      } else if (
+        isTocChapterLabel(item.label)
+        && /^(第\s*[0-9一二三四五六七八九十百零]+章|Chapter|Ch\.?)\s*\S*/i.test(item.label)
+      ) {
         if (!cur) {
           cur = { header: null, items: [] };
           groups.push(cur);
