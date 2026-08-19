@@ -576,7 +576,7 @@ fn add_reading_time(state: tauri::State<'_, db::Db>, path: String, seconds: u64)
 
 const META_PRESETS_JSON: &str = include_str!("meta_presets.json");
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 struct MetaPreset {
     title: String,
     #[serde(default)]
@@ -633,8 +633,96 @@ fn meta_presets() -> &'static HashMap<String, MetaPreset> {
                 }
             }
         }
+        // 外部预置库（导出功能产生，可手工编辑）：存在且可解析时覆盖/补充内置
+        if let Ok(text) = fs::read_to_string(external_presets_path()) {
+            if let Ok(list) = serde_json::from_str::<Vec<MetaPreset>>(&text) {
+                for p in list {
+                    let k = norm_title_key(&p.title);
+                    if !k.is_empty() {
+                        m.insert(k, p.clone());
+                    }
+                    if !p.name.is_empty() {
+                        let stem = Path::new(&p.name)
+                            .file_stem()
+                            .map(|s| s.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        let k2 = norm_title_key(&stem);
+                        if !k2.is_empty() {
+                            m.insert(k2, p);
+                        }
+                    }
+                }
+            }
+        }
         m
     })
+}
+
+/// 外部预置库路径：Mac 放工作目录（用户可编辑）；Android 放 Download（用户可访问）
+fn external_presets_path() -> PathBuf {
+    #[cfg(target_os = "android")]
+    {
+        PathBuf::from("/storage/emulated/0/Download/SnackRead-presets.json")
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        work_dir().join("presets.json")
+    }
+}
+
+/// 把封面压成 240px JPEG 并转 base64（预置库内嵌封面用）
+fn cover_thumb_b64(path: &str) -> Option<String> {
+    let img = image::open(path).ok()?;
+    let img = if img.width() > 240 {
+        let h = ((img.height() as f64) * 240.0 / (img.width() as f64)).round().max(1.0) as u32;
+        img.resize(240, h, image::imageops::FilterType::Lanczos3)
+    } else {
+        img
+    };
+    let mut buf = Vec::new();
+    let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 82);
+    enc.encode_image(&img.to_rgb8()).ok()?;
+    Some(base64::engine::general_purpose::STANDARD.encode(&buf))
+}
+
+/// 导出当前书库全部元数据为外部预置库（覆盖原文件），返回文件路径。
+/// 外部预置库在下次启动时生效；也可拷贝到其他设备使用。
+#[tauri::command]
+fn export_metadata_presets(state: tauri::State<'_, db::Db>) -> Result<String, String> {
+    let conn = state.0.lock().unwrap();
+    let books = db::list_books(&conn)?;
+    let mut presets: Vec<MetaPreset> = Vec::new();
+    for b in &books {
+        if b.title.trim().is_empty() {
+            continue;
+        }
+        let name = Path::new(&b.path)
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let cover_b64 = b
+            .cover
+            .as_deref()
+            .filter(|p| Path::new(p).is_file())
+            .and_then(cover_thumb_b64)
+            .unwrap_or_default();
+        presets.push(MetaPreset {
+            title: b.title.clone(),
+            author: b.author.clone(),
+            rating: b.rating,
+            tags: serde_json::from_str(&b.tags).unwrap_or_default(),
+            note: b.note.clone(),
+            name,
+            cover_b64,
+        });
+    }
+    let json = serde_json::to_string_pretty(&presets).map_err(|e| format!("序列化失败: {e}"))?;
+    let out = external_presets_path();
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(&out, json).map_err(|e| format!("写入失败: {e}"))?;
+    Ok(norm_path(&out))
 }
 
 /// 新书自动填元数据：仅当书完全没有元数据（title/author/rating/tags/note 全空）时，
@@ -5299,6 +5387,7 @@ pub fn run() {
             get_book_meta,
             set_book_meta,
             smart_fetch_meta,
+            export_metadata_presets,
             get_deepseek_key,
             set_deepseek_key,
             check_epub_toc,

@@ -1883,6 +1883,8 @@ const libStateEl = document.getElementById('lib-state');
 const libApiKeyEl = document.getElementById('lib-apikey-input');
 const libApiKeySaveEl = document.getElementById('lib-apikey-save');
 const libApiKeyStateEl = document.getElementById('lib-apikey-state');
+const libPresetExportEl = document.getElementById('lib-preset-export');
+const libPresetStateEl = document.getElementById('lib-preset-state');
 let libBrowsePath = '';
 
 libGearEl.appendChild(gearIconEl());
@@ -1913,6 +1915,18 @@ async function saveApiKey() {
 libApiKeySaveEl.addEventListener('click', saveApiKey);
 libApiKeyEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.stopPropagation(); saveApiKey(); }
+});
+
+// ---- 元数据预置库：导出当前书库元数据，覆盖外部预置文件 ----
+
+libPresetExportEl.addEventListener('click', async () => {
+  libPresetStateEl.textContent = '导出中…';
+  try {
+    const path = await invoke('export_metadata_presets');
+    libPresetStateEl.textContent = '已导出：' + path;
+  } catch (e) {
+    libPresetStateEl.textContent = '导出失败：' + (typeof e === 'string' ? e : JSON.stringify(e));
+  }
 });
 
 function openLibDialog() {

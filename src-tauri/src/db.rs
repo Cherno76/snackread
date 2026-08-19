@@ -311,6 +311,16 @@ pub fn get_book(conn: &Connection, path: &str) -> Result<Option<BookRow>, String
         .map_err(|e| e.to_string())
 }
 
+/// 列出所有书（元数据预置库导出时用；个人书库量级很小，直接全量读）
+pub fn list_books(conn: &Connection) -> Result<Vec<BookRow>, String> {
+    let q = format!("SELECT {} FROM books", BOOK_COLS);
+    let mut stmt = conn.prepare(&q).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], book_from_row)
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
 /// 书库中所有 EPUB/TXT 文件路径（散装与分卷），用于计算解包缓存 key
 /// （TXT 解析产物也存放在同一个 epub 缓存目录）
 pub fn list_epub_paths(conn: &Connection) -> Result<Vec<String>, String> {
