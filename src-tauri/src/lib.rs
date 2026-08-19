@@ -589,6 +589,8 @@ struct MetaPreset {
     note: String,
     #[serde(default)]
     name: String,
+    #[serde(default)]
+    cover_b64: String,
 }
 
 /// 规范化书名：先转简体，再去括号内容、去空白、转小写（用于预置库匹配）。
@@ -649,11 +651,11 @@ fn is_preset_fill(b: &db::BookRow, presets: &HashMap<String, MetaPreset>) -> boo
     })
 }
 
-/// 按规范化文件名匹配内置预置库，填入预置数据（不含封面）。
+/// 按规范化文件名匹配内置预置库，填入预置数据（含内嵌封面）。
 /// 仅对完全没有元数据的书生效；若元数据恰好等于某个预置条目（旧版误填），
 /// 也允许重新匹配纠正，匹配不上时清空以免继续显示错误的预置数据。
 fn maybe_fill_preset_meta(conn: &rusqlite::Connection, path: &str) {
-    let (kind, is_ebook, hidden, read_time, last_vol, last_at, rematch) =
+    let (kind, is_ebook, hidden, read_time, last_vol, last_at, rematch, has_cover) =
         match db::get_book(conn, path).ok().flatten() {
             Some(b) => {
                 let empty = b.title.trim().is_empty()
@@ -666,9 +668,17 @@ fn maybe_fill_preset_meta(conn: &rusqlite::Connection, path: &str) {
                     if !is_preset_fill(&b, &meta_presets()) {
                         return;
                     }
-                    (b.kind, b.is_ebook, b.hidden, b.read_time, b.last_read_volume, b.last_read_at, true)
+                    (
+                        b.kind, b.is_ebook, b.hidden, b.read_time,
+                        b.last_read_volume, b.last_read_at, true,
+                        b.cover.as_deref().map(|c| !c.trim().is_empty()).unwrap_or(false),
+                    )
                 } else {
-                    (b.kind, b.is_ebook, b.hidden, b.read_time, b.last_read_volume, b.last_read_at, false)
+                    (
+                        b.kind, b.is_ebook, b.hidden, b.read_time,
+                        b.last_read_volume, b.last_read_at, false,
+                        b.cover.as_deref().map(|c| !c.trim().is_empty()).unwrap_or(false),
+                    )
                 }
             }
             None => {
@@ -684,7 +694,7 @@ fn maybe_fill_preset_meta(conn: &rusqlite::Connection, path: &str) {
                     "pdf" => "pdf",
                     _ => "dir",
                 };
-                (kind.to_string(), kind != "dir", false, 0u64, String::new(), 0u64, false)
+                (kind.to_string(), kind != "dir", false, 0u64, String::new(), 0u64, false, false)
             }
         };
     let stem = Path::new(path)
@@ -729,6 +739,30 @@ fn maybe_fill_preset_meta(conn: &rusqlite::Connection, path: &str) {
         if last_vol.is_empty() { None } else { Some(last_vol.as_str()) },
         last_at,
     );
+    // 书原本没有封面时，从预置库内嵌封面写入
+    if !has_cover && !preset.cover_b64.trim().is_empty() {
+        apply_preset_cover(conn, path, &preset.cover_b64);
+    }
+}
+
+/// 把预置库内嵌封面（base64 JPEG）写入封面目录并绑定到书
+fn apply_preset_cover(conn: &rusqlite::Connection, path: &str, b64: &str) {
+    let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(b64) else {
+        return;
+    };
+    if bytes.is_empty() {
+        return;
+    }
+    let norm = norm_path(Path::new(path));
+    let dir = covers_dir();
+    if fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let out = dir.join(format!("cover_{}.jpeg", cover_key(Path::new(&norm))));
+    if fs::write(&out, &bytes).is_err() {
+        return;
+    }
+    let _ = db::set_book_cover(conn, &norm, Some(&norm_path(&out)));
 }
 
 #[tauri::command]
