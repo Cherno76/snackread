@@ -418,6 +418,10 @@ body.reading.ctl-on #toc-panel {
 #toc-list li:hover { background: var(--hover); }
 #toc-list li.now { color: var(--text); background: var(--sel); border-left-color: var(--accent); }
 #toc-list li.toc-vol { font-weight: 700; font-style: italic; font-size: 15px; }
+#toc-list li.toc-vol::before { content: '▸ '; color: var(--muted); font-size: 12px; }
+#toc-list li.toc-vol.expanded::before { content: '▾ '; }
+#toc-list li.toc-child { padding-left: 34px; font-size: 12px; }
+#toc-list li[hidden] { display: none; }
 #toc-list li.toc-empty { color: var(--muted); cursor: default; }
 /* 文字书翻页：章节占满视口，分页在 iframe 内部进行 */
 #strip.flip .page.epub { width: 100%; height: 100%; flex-shrink: 0; }

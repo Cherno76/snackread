@@ -1235,6 +1235,9 @@ async function buildTextFlip() {
 
 let tocAnchorCols = {};       // chapter -> {anchor: 列号}（reader 实测，目录高亮精确定位）
 let tocAnchorsByChapter = {}; // chapter -> [anchor,...]（请求 reader 测量用）
+let tocGroups = [];           // 按卷分组：{header: 卷条目|null, items: 章节条目[]}
+let tocGroupRows = [];        // gi -> {headerEl, rows: [li,...]}（展开/折叠用）
+let tocCollapsed = new Set(); // 已折叠的卷组下标
 
 function isTocChapterLabel(s) {
   return /^(第\s*[0-9一二三四五六七八九十百零]+章|序章|序言|引子|楔子|尾声|终章|番外|后记|前言|自序)/.test(s || '')
@@ -1262,23 +1265,111 @@ function buildTocPanel() {
     return;
   }
   tocAnchorsByChapter = {};
-  const frag = document.createDocumentFragment();
+  // 1) 按卷/册标题分组；无卷标记的书保持平铺
+  const groups = [];
+  let cur = null;
   for (const item of toc) {
-    const li = document.createElement('li');
-    li.textContent = item.label;
-    if (isTocVolumeLabel(item.label)) li.className = 'toc-vol';
-    li.dataset.chapter = String(item.chapter);
-    li.dataset.anchor = item.anchor || '';
-    if (item.anchor) {
-      (tocAnchorsByChapter[item.chapter] = tocAnchorsByChapter[item.chapter] || []).push(item.anchor);
+    if (isTocVolumeLabel(item.label)) {
+      cur = { header: item, items: [] };
+      groups.push(cur);
+    } else {
+      if (!cur) {
+        cur = { header: null, items: [] };
+        groups.push(cur);
+      }
+      cur.items.push(item);
     }
-    li.addEventListener('click', () => {
-      tocJumpTo(item);
-      closeTocPanel();
-    });
-    frag.appendChild(li);
   }
+  tocGroups = groups;
+  // 2) 当前阅读章节所在卷默认展开，其余折叠
+  const curCh = flipOn
+    ? (textCurChapter != null ? textCurChapter : currentStripIndex())
+    : currentStripIndex();
+  let expandedGi = -1;
+  for (let gi = 0; gi < groups.length; gi++) {
+    const g = groups[gi];
+    if (!g.header) continue;
+    const start = g.header.chapter;
+    const end = groups[gi + 1] && groups[gi + 1].header
+      ? groups[gi + 1].header.chapter
+      : Number.MAX_SAFE_INTEGER;
+    if (curCh >= start && curCh < end) {
+      expandedGi = gi;
+      break;
+    }
+  }
+  tocCollapsed = new Set();
+  tocGroupRows = [];
+  const frag = document.createDocumentFragment();
+  groups.forEach((g, gi) => {
+    if (!g.header) {
+      // 首卷之前的章节：平铺显示
+      for (const item of g.items) frag.appendChild(makeTocItemEl(item));
+      return;
+    }
+    const collapsed = gi !== expandedGi;
+    if (collapsed) tocCollapsed.add(gi);
+    const headerEl = document.createElement('li');
+    headerEl.className = 'toc-vol' + (collapsed ? '' : ' expanded');
+    headerEl.textContent = g.header.label;
+    headerEl.dataset.chapter = String(g.header.chapter);
+    headerEl.dataset.anchor = g.header.anchor || '';
+    if (g.header.anchor) {
+      (tocAnchorsByChapter[g.header.chapter] = tocAnchorsByChapter[g.header.chapter] || []).push(g.header.anchor);
+    }
+    frag.appendChild(headerEl); // 卷行放在该卷章节之前
+    const rows = [];
+    for (const item of g.items) {
+      const li = makeTocItemEl(item);
+      li.classList.add('toc-child');
+      if (collapsed) li.hidden = true;
+      rows.push(li);
+      frag.appendChild(li);
+    }
+    headerEl.addEventListener('click', () => toggleTocGroup(gi));
+    tocGroupRows.push({ headerEl, rows });
+  });
   tocListEl.appendChild(frag);
+}
+
+function makeTocItemEl(item) {
+  const li = document.createElement('li');
+  li.textContent = item.label;
+  li.dataset.chapter = String(item.chapter);
+  li.dataset.anchor = item.anchor || '';
+  if (item.anchor) {
+    (tocAnchorsByChapter[item.chapter] = tocAnchorsByChapter[item.chapter] || []).push(item.anchor);
+  }
+  li.addEventListener('click', () => {
+    tocJumpTo(item);
+    closeTocPanel();
+  });
+  return li;
+}
+
+// 手动展开/折叠某个卷组
+function toggleTocGroup(gi) {
+  const g = tocGroupRows[gi];
+  if (!g) return;
+  const newCollapsed = !tocCollapsed.has(gi);
+  if (newCollapsed) {
+    tocCollapsed.add(gi);
+  } else {
+    tocCollapsed.delete(gi);
+  }
+  g.headerEl.classList.toggle('expanded', !newCollapsed);
+  for (const li of g.rows) li.hidden = newCollapsed;
+  // 展开后定位到组内当前章节
+  if (!newCollapsed) scrollTocToNow();
+}
+
+// 目录面板打开时自动滚动到当前高亮章节（仅面板可见时生效）
+function scrollTocToNow() {
+  if (!tocPanelEl.classList.contains('show')) return;
+  const now = tocListEl.querySelector('li.now');
+  if (!now) return;
+  const top = now.offsetTop - tocListEl.offsetTop;
+  tocListEl.scrollTop = Math.max(0, top - tocListEl.clientHeight / 2 + now.clientHeight / 2);
 }
 
 // 请 reader 上报某章目录锚点的列号（用于目录高亮选中当前条目）
@@ -1389,6 +1480,7 @@ function updateTocSel() {
   }
   const li = items[pick];
   if (li) li.classList.add('now');
+  scrollTocToNow();
 }
 function openTocPanel() {
   if (focus !== 'strip') return;
