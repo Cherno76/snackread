@@ -904,6 +904,12 @@ body.reading.ctl-on #toc-panel {
 .lib-card .type-pill.t-epub {
   background: #72C888; color: #fff; border-color: transparent; text-shadow: none;
 }
+/* 漫画格式（文件夹图片/CBZ/CBR）：紫粉 */
+.lib-card .type-pill.t-img,
+.lib-card .type-pill.t-cbz,
+.lib-card .type-pill.t-cbr {
+  background: #d068b8; color: #fff; border-color: transparent; text-shadow: none;
+}
 #meta-stars { display: flex; align-items: center; gap: 2px; }
 .meta-star {
   background: none; border: none; cursor: pointer; padding: 2px; color: var(--gold);

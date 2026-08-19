@@ -4610,7 +4610,15 @@ function makeLibCard(b, onOpen) {
     ev.stopPropagation();
     toggleLibBookEye(b, eye);
   });
-  const type = !b.is_dir ? (b.is_txt ? 'TXT' : (b.is_epub ? 'EPUB' : (b.is_pdf ? 'PDF' : ''))) : '';
+  // 类型胶囊：散装书取自身格式；文件夹书取内部内容类型（漫画=图片/CBZ/CBR）
+  let type = '', typeCls = '';
+  if (b.is_dir) {
+    type = b.dir_type || '';
+    typeCls = type === '图片' ? 't-img' : 't-' + type.toLowerCase();
+  } else {
+    type = b.is_txt ? 'TXT' : (b.is_epub ? 'EPUB' : (b.is_pdf ? 'PDF' : ''));
+    typeCls = 't-' + type.toLowerCase();
+  }
   const refresh = document.createElement('span');
   refresh.className = 'refresh-btn';
   refresh.title = '刷新本书缓存';
@@ -4652,7 +4660,7 @@ function makeLibCard(b, onOpen) {
     titleRow.appendChild(label);
     if (type) {
       const pill = document.createElement('span');
-      pill.className = 'type-pill t-' + type.toLowerCase();
+      pill.className = 'type-pill ' + typeCls;
       pill.textContent = type;
       titleRow.appendChild(pill);
     }
@@ -4671,7 +4679,7 @@ function makeLibCard(b, onOpen) {
     if (b.is_dir) card.appendChild(refresh);
     if (type) {
       const pill = document.createElement('span');
-      pill.className = 'type-pill t-' + type.toLowerCase();
+      pill.className = 'type-pill ' + typeCls;
       pill.textContent = type;
       thumbWrap.appendChild(pill);
     }

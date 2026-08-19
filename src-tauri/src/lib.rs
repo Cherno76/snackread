@@ -45,6 +45,7 @@ struct FsEntry {
     name: String,
     path: String,
     is_dir: bool,
+    dir_type: String, // 文件夹内容类型（图片/CBZ/CBR/EPUB/TXT/PDF），空=无；散装文件为空
     is_image: bool,
     is_pdf: bool,
     is_epub: bool,
@@ -54,6 +55,63 @@ struct FsEntry {
     is_hidden: bool,
     size: u64,
     modified: u64,
+}
+
+/// 文件夹内容类型：扫描直接子项，用于给文件夹书（漫画等）显示类型胶囊
+fn dir_content_type(dir: &Path) -> String {
+    let mut has_img = false;
+    let mut has_cbz = false;
+    let mut has_cbr = false;
+    let mut has_epub = false;
+    let mut has_txt = false;
+    let mut has_pdf = false;
+    if let Ok(rd) = fs::read_dir(dir) {
+        for item in rd.flatten() {
+            let p = item.path();
+            if p.is_dir() {
+                continue;
+            }
+            if p.file_name()
+                .map(|n| n.to_string_lossy().starts_with('.'))
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            if is_image(&p) {
+                has_img = true;
+                continue;
+            }
+            if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
+                match ext.to_ascii_lowercase().as_str() {
+                    "cbz" => has_cbz = true,
+                    "cbr" => has_cbr = true,
+                    "epub" => has_epub = true,
+                    "txt" => has_txt = true,
+                    "pdf" => has_pdf = true,
+                    _ => {}
+                }
+            }
+        }
+    }
+    if has_cbz {
+        return "CBZ".into();
+    }
+    if has_cbr {
+        return "CBR".into();
+    }
+    if has_img {
+        return "图片".into();
+    }
+    if has_epub {
+        return "EPUB".into();
+    }
+    if has_txt {
+        return "TXT".into();
+    }
+    if has_pdf {
+        return "PDF".into();
+    }
+    String::new()
 }
 
 fn dir_is_ebook(conn: &rusqlite::Connection, dir: &Path) -> bool {
@@ -216,6 +274,7 @@ fn list_dir(state: tauri::State<'_, db::Db>, path: String) -> Result<Vec<FsEntry
             name: name.clone(),
             path: norm_path(&p),
             is_dir,
+            dir_type: if is_dir { dir_content_type(&p) } else { String::new() },
             is_image: !is_dir && is_image(&p),
             is_pdf: !is_dir
                 && p.extension()
