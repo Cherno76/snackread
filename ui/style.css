@@ -948,6 +948,10 @@ body.reading.ctl-on #toc-panel {
 }
 #lib-apikey input:focus { border-color: var(--accent); }
 #lib-apikey-state { font-size: 12px; color: var(--muted); }
+#lib-preset {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px 18px; /* 与上方 AI 设置行左右对齐，底部留白 */
+}
 /* 阅读统计对话框 */
 #next-vol-dialog {
   position: fixed; inset: 0; z-index: 26;
