@@ -1236,6 +1236,21 @@ async function buildTextFlip() {
 let tocAnchorCols = {};       // chapter -> {anchor: 列号}（reader 实测，目录高亮精确定位）
 let tocAnchorsByChapter = {}; // chapter -> [anchor,...]（请求 reader 测量用）
 
+function isTocChapterLabel(s) {
+  return /^(第\s*[0-9一二三四五六七八九十百零]+章|序章|序言|引子|楔子|尾声|终章|番外|后记|前言|自序)/.test(s || '')
+    || /^(Chapter|Ch\.?)\s+\S+/i.test(s || '')
+    || /^(Prologue|Epilogue|Introduction|Preface|Foreword|Afterword)\b/i.test(s || '');
+}
+
+// 显式卷/册/部/季/合集标题（目录面板与文字书卷划分共用同一套判断）
+function isTocVolumeLabel(s) {
+  if (!s || isTocChapterLabel(s)) return false;
+  return /(卷|册|部|季|合集)/.test(s)
+    || /[0-9一二三四五六七八九十百]+\s*[:：]/.test(s)
+    || /^.{2,10}之.+/.test(s)
+    || /^(Book|Part|Volume|Vol\.?|Section)\s+\S+/i.test(s);
+}
+
 function buildTocPanel() {
   tocListEl.innerHTML = '';
   const toc = epubMeta && epubMeta.toc;
@@ -1251,6 +1266,7 @@ function buildTocPanel() {
   for (const item of toc) {
     const li = document.createElement('li');
     li.textContent = item.label;
+    if (isTocVolumeLabel(item.label)) li.className = 'toc-vol';
     li.dataset.chapter = String(item.chapter);
     li.dataset.anchor = item.anchor || '';
     if (item.anchor) {
@@ -1489,25 +1505,16 @@ function computeTextVolumes() {
   textVolumes = [];
   const toc = epubMeta && epubMeta.toc;
   if (!toc || !epubMeta.spine) return;
-  const isChapterLabel = (s) =>
-    /^(第\s*[0-9一二三四五六七八九十百零]+章|序章|序言|引子|楔子|尾声|终章|番外|后记|前言|自序)/.test(s || '')
-    || /^(Chapter|Ch\.?)\s+\S+/i.test(s || '')
-    || /^(Prologue|Epilogue|Introduction|Preface|Foreword|Afterword)\b/i.test(s || '');
   const markers = [];
   for (let i = 0; i < toc.length; i++) {
     const cur = toc[i].label || '';
     // 显式卷标记（不强依赖后一条是章节）：中文卷/册/部/季/合集、数字+冒号
     // （民调局异闻录2:清河鬼戏）、“书名之卷名”（鬼吹灯之龙岭迷窟）、英文 Book/Part/Volume 前缀
     // （Book 1 by The Philosopher s Stone）
-    const explicitVol = /(卷|册|部|季|合集)/.test(cur)
-      || /[0-9一二三四五六七八九十百]+\s*[:：]/.test(cur)
-      || /^.{2,10}之.+/.test(cur)
-      || /^(Book|Part|Volume|Vol\.?|Section)\s+\S+/i.test(cur);
     // 只认显式卷标记；不再用“书名后紧跟 Chapter”猜卷，否则会把书与书之间的
     // 短篇/番外（如 Amber 的 Reflections in a Crystal Cave）误判成单独一卷。
     // 真实合集（Potter 的 Book 1 by…、Amber 的 Book One - …）都有 Book/Part/Volume 前缀。
-    if (explicitVol) {
-      if (isChapterLabel(cur)) continue; // 章节标题（如 Chapter One）不算卷
+    if (isTocVolumeLabel(cur)) {
       let name = cur.trim();
       const zhi = cur.match(/^(.{2,10})之(.+)$/);
       if (zhi) {
@@ -4913,7 +4920,7 @@ function makeVolCard(book, v, holders) {
   if (v.thumb) img.src = convertFileSrc(v.thumb);
   const s = splitBookName(v.name.replace(/\.(pdf|epub)$/i, ''));
   const label = document.createElement('div');
-  label.className = 'name vol-name';
+  label.className = 'name';
   label.textContent = s.volume || v.name;
   label.title = v.name;
   if (!v.thumb && holders) holders.set(v.path, { img, label });
