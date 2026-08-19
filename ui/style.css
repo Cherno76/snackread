@@ -89,6 +89,15 @@ body {
 /* Mac（桌面）：整条隐藏应用内标题栏（logo/时间/信号），用系统原生标题栏 */
 @media (hover: hover) and (pointer: fine) {
   #titlebar { display: none !important; }
+  /* 标题栏隐藏后，原来给它让位的元素不再保留 34px 空间 */
+  #sidebar { padding-top: var(--safe-top); }
+  body.reading.ctl-on #mode-tab,
+  body.reading.ctl-on #page-mode,
+  body.reading.ctl-on #theme-btn,
+  body.reading.ctl-on #reader-back {
+    top: calc(10px + var(--safe-top));
+  }
+  body.reading.ctl-on #toc-panel { padding-top: var(--safe-top); }
 }
 #titlebar-text .titlebar-logo {
   height: 15px; width: auto; display: inline-block;
