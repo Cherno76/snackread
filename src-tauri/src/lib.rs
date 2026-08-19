@@ -650,46 +650,10 @@ fn external_presets_path() -> PathBuf {
     }
 }
 
-/// 导出封面存放目录：Android 放 E-Books/covers（与书库一起拷贝）；Mac 放工作目录 covers
-fn preset_covers_dir() -> PathBuf {
-    #[cfg(target_os = "android")]
-    {
-        PathBuf::from("/storage/emulated/0/E-Books/covers")
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        work_dir().join("covers")
-    }
-}
-
-/// Android 首次运行：确保 E-Books 与 covers 目录存在
-/// （书库本身由用户导入到子目录，E-Books 根只放预置库/封面）
+/// Android 首次运行：确保 E-Books 根目录存在（书库本身由用户导入到子目录）
 #[cfg(target_os = "android")]
 fn ensure_android_ebook_dirs() {
-    let root = Path::new("/storage/emulated/0/E-Books");
-    let _ = fs::create_dir_all(root.join("covers"));
-}
-
-/// 封面缩略图文件名：用元数据书名，便于人工识别；非法字符替换为下划线
-fn safe_cover_name(title: &str) -> String {
-    let mut s: String = title
-        .trim()
-        .chars()
-        .map(|c| {
-            if c.is_ascii_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
-                '_'
-            } else {
-                c
-            }
-        })
-        .collect();
-    if s.chars().count() > 80 {
-        s = s.chars().take(80).collect();
-    }
-    if s.trim().is_empty() {
-        s = "未命名".to_string();
-    }
-    s
+    let _ = fs::create_dir_all("/storage/emulated/0/E-Books");
 }
 
 /// 把封面压成 240px JPEG 字节（预置库内嵌与导出封面共用）
@@ -708,17 +672,12 @@ fn cover_thumb_jpeg(path: &str) -> Option<Vec<u8>> {
 }
 
 /// 导出当前书库全部元数据为外部预置库（覆盖原文件），返回文件路径。
-/// 外部预置库在下次启动时生效；封面同时按书名写入 covers 目录，便于人工识别。
+/// 封面以 base64 内嵌（cover_b64），外部预置库在下次启动时生效。
 #[tauri::command]
 fn export_metadata_presets(state: tauri::State<'_, db::Db>) -> Result<String, String> {
     let conn = state.0.lock().unwrap();
     let books = db::list_books(&conn)?;
     let mut presets: Vec<MetaPreset> = Vec::new();
-    let cover_dir = preset_covers_dir();
-    if fs::create_dir_all(&cover_dir).is_err() {
-        return Err("无法创建封面目录".into());
-    }
-    let mut used_cover_names: HashSet<String> = HashSet::new();
     for b in &books {
         if b.title.trim().is_empty() {
             continue;
@@ -736,17 +695,6 @@ fn export_metadata_presets(state: tauri::State<'_, db::Db>) -> Result<String, St
             .as_deref()
             .map(|b| base64::engine::general_purpose::STANDARD.encode(b))
             .unwrap_or_default();
-        // 按书名写一份封面文件（重名自动加序号）
-        if let Some(bytes) = &cover_bytes {
-            let base = safe_cover_name(&b.title);
-            let mut fname = format!("{base}.jpg");
-            let mut n = 2;
-            while !used_cover_names.insert(fname.clone()) {
-                fname = format!("{base} ({n}).jpg");
-                n += 1;
-            }
-            let _ = fs::write(cover_dir.join(&fname), bytes);
-        }
         presets.push(MetaPreset {
             title: b.title.clone(),
             author: b.author.clone(),

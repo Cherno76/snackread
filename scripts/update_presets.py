@@ -22,7 +22,6 @@ PRESETS = (
     if len(sys.argv) > 1
     else os.path.expanduser("~/Documents/cshow-work/presets.json")
 )
-COVERS_DIR = os.path.expanduser("~/Documents/cshow-work/covers")
 DB = (
     sys.argv[2]
     if len(sys.argv) > 2
@@ -53,15 +52,6 @@ def read_cover_thumb(path: str):
         return None
 
 
-def safe_cover_name(title: str):
-    import re
-
-    s = re.sub(r'[\/\\:*?"<>|]', "_", title.strip())
-    if len(s) > 80:
-        s = s[:80]
-    return s or "未命名"
-
-
 def main():
     if not os.path.isfile(DB):
         print(f"数据库不存在: {DB}")
@@ -83,8 +73,6 @@ def main():
 
     added = 0
     covers = 0
-    os.makedirs(COVERS_DIR, exist_ok=True)
-    used_cover_names = set()
     for path, title, author, rating, tags, note, cover in rows:
         name = os.path.basename(path.rstrip("/"))
         if not name:
@@ -116,19 +104,9 @@ def main():
         if not entry.get("cover_b64") and cover:
             thumb = read_cover_thumb(cover)
             if thumb:
-                data, b64 = thumb
+                _, b64 = thumb
                 entry["cover_b64"] = b64
                 covers += 1
-                # 封面文件名用书名，便于人工识别（重名自动加序号）
-                base = safe_cover_name(entry.get("title") or title)
-                fname = f"{base}.jpg"
-                n = 2
-                while fname in used_cover_names:
-                    fname = f"{base} ({n}).jpg"
-                    n += 1
-                used_cover_names.add(fname)
-                with open(os.path.join(COVERS_DIR, fname), "wb") as f:
-                    f.write(data)
 
     with open(PRESETS, "w", encoding="utf-8") as f:
         json.dump(entries, f, ensure_ascii=False, indent=1)
