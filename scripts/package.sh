@@ -1,9 +1,9 @@
 #!/bin/bash
-# 打包 cshow-gui：release 编译 -> 组装 .app -> 签名 -> zip -> 自动复制到 /Applications
+# 打包 SnackRead（macOS）：release 编译 -> 组装 .app -> 签名 -> zip -> 自动复制到 /Applications
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP_NAME="cshow-gui"
+APP_NAME="SnackRead"
 APP="$ROOT/dist/$APP_NAME.app"
 
 cd "$ROOT/src-tauri"
@@ -25,8 +25,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <plist version="1.0">
 <dict>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-  <key>CFBundleName</key><string>cshow-gui</string>
-  <key>CFBundleDisplayName</key><string>cshow-gui</string>
+  <key>CFBundleName</key><string>SnackRead</string>
+  <key>CFBundleDisplayName</key><string>SnackRead</string>
   <key>CFBundleExecutable</key><string>cshow-gui</string>
   <key>CFBundleIdentifier</key><string>com.cherno.cshow-gui</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -49,7 +49,7 @@ rm -f "$ZIP"
 ditto -c -k --keepParent "$APP" "$ZIP"
 
 echo "== 清理旧版本 zip（只保留当前版本）"
-find "$ROOT/dist" -maxdepth 1 -name 'cshow-gui-*-macos.zip' ! -name "$(basename "$ZIP")" -delete
+find "$ROOT/dist" -maxdepth 1 -name 'SnackRead-*-macos.zip' ! -name "$(basename "$ZIP")" -delete
 
 echo "== 复制到 /Applications"
 rm -rf "/Applications/$APP_NAME.app"
