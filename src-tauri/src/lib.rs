@@ -57,58 +57,62 @@ struct FsEntry {
     modified: u64,
 }
 
-/// 文件夹内容类型：扫描直接子项，用于给文件夹书（漫画等）显示类型胶囊
+/// 文件夹内容类型：递归扫描书文件夹与卷子文件夹内的文件（带深度/数量上限），
+/// 用于给文件夹书（漫画等）显示类型胶囊。优先级：CBZ > CBR > 图片 > EPUB > TXT > PDF
 fn dir_content_type(dir: &Path) -> String {
-    let mut has_img = false;
-    let mut has_cbz = false;
-    let mut has_cbr = false;
-    let mut has_epub = false;
-    let mut has_txt = false;
-    let mut has_pdf = false;
-    if let Ok(rd) = fs::read_dir(dir) {
-        for item in rd.flatten() {
-            let p = item.path();
-            if p.is_dir() {
-                continue;
-            }
-            if p.file_name()
-                .map(|n| n.to_string_lossy().starts_with('.'))
-                .unwrap_or(false)
-            {
-                continue;
-            }
-            if is_image(&p) {
-                has_img = true;
-                continue;
-            }
-            if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
-                match ext.to_ascii_lowercase().as_str() {
-                    "cbz" => has_cbz = true,
-                    "cbr" => has_cbr = true,
-                    "epub" => has_epub = true,
-                    "txt" => has_txt = true,
-                    "pdf" => has_pdf = true,
-                    _ => {}
+    let mut found = [false; 6]; // cbz, cbr, img, epub, txt, pdf
+    let mut scanned = 0usize;
+    fn scan(dir: &Path, depth: usize, found: &mut [bool; 6], scanned: &mut usize) {
+        if depth > 3 || *scanned > 500 {
+            return;
+        }
+        if let Ok(rd) = fs::read_dir(dir) {
+            for item in rd.flatten() {
+                if *scanned > 500 {
+                    return;
+                }
+                let p = item.path();
+                if p.file_name()
+                    .map(|n| n.to_string_lossy().starts_with('.'))
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
+                *scanned += 1;
+                if p.is_dir() {
+                    scan(&p, depth + 1, found, scanned);
+                } else if is_image(&p) {
+                    found[2] = true;
+                } else if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
+                    match ext.to_ascii_lowercase().as_str() {
+                        "cbz" => found[0] = true,
+                        "cbr" => found[1] = true,
+                        "epub" => found[3] = true,
+                        "txt" => found[4] = true,
+                        "pdf" => found[5] = true,
+                        _ => {}
+                    }
                 }
             }
         }
     }
-    if has_cbz {
+    scan(dir, 0, &mut found, &mut scanned);
+    if found[0] {
         return "CBZ".into();
     }
-    if has_cbr {
+    if found[1] {
         return "CBR".into();
     }
-    if has_img {
+    if found[2] {
         return "图片".into();
     }
-    if has_epub {
+    if found[3] {
         return "EPUB".into();
     }
-    if has_txt {
+    if found[4] {
         return "TXT".into();
     }
-    if has_pdf {
+    if found[5] {
         return "PDF".into();
     }
     String::new()
