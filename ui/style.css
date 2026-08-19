@@ -617,10 +617,11 @@ body.reading.ctl-on #toc-panel {
 #list-grid.list .lib-card .thumb { width: 100%; height: 100%; object-fit: cover; }
 #list-grid.list .lib-card .card-info {
   flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;
-  padding: 2px 56px 0 0;
+  padding: 2px 0 0 0;
 }
 #list-grid.list .lib-card .card-title-row {
   display: flex; align-items: center; gap: 6px; min-width: 0;
+  padding-right: 56px; /* 仅书名行避开右上角编辑/eye，标签行用满整卡宽度 */
 }
 #list-grid.list .lib-card .card-title-row .name {
   flex: 0 1 auto; min-width: 0; /* 不撑满整行，让类型胶囊紧贴书名 */
