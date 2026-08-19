@@ -617,12 +617,21 @@ body.reading.ctl-on #toc-panel {
 #list-grid.list .lib-card .thumb { width: 100%; height: 100%; object-fit: cover; }
 #list-grid.list .lib-card .card-info {
   flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;
-  padding: 2px 88px 0 0;
+  padding: 2px 56px 0 0;
+}
+#list-grid.list .lib-card .card-title-row {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+}
+#list-grid.list .lib-card .card-title-row .name {
+  flex: 1; min-width: 0;
 }
 #list-grid.list .lib-card .name {
   margin-top: 0; font-size: 13px; color: var(--text); text-align: left;
   white-space: normal; display: -webkit-box;
   -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+#list-grid.list .lib-card .card-title-row .type-pill {
+  position: static; flex-shrink: 0; pointer-events: none;
 }
 #list-grid.list .lib-card .card-meta {
   margin-top: auto; align-items: flex-start; min-height: 0;

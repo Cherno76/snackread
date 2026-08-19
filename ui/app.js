@@ -4647,17 +4647,20 @@ function makeLibCard(b, onOpen) {
     // 列表视图：左缩略图 + 右信息，右上角 类型/刷新/编辑/eye
     const info = document.createElement('div');
     info.className = 'card-info';
-    info.appendChild(label);
-    info.appendChild(cardMeta);
-    const corner = document.createElement('div');
-    corner.className = 'card-corner';
-    if (b.is_dir) corner.appendChild(refresh);
+    const titleRow = document.createElement('div');
+    titleRow.className = 'card-title-row';
+    titleRow.appendChild(label);
     if (type) {
       const pill = document.createElement('span');
       pill.className = 'type-pill';
       pill.textContent = type;
-      corner.appendChild(pill);
+      titleRow.appendChild(pill);
     }
+    info.appendChild(titleRow);
+    info.appendChild(cardMeta);
+    const corner = document.createElement('div');
+    corner.className = 'card-corner';
+    if (b.is_dir) corner.appendChild(refresh);
     corner.appendChild(edit);
     corner.appendChild(eye);
     card.appendChild(thumbWrap);
