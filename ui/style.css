@@ -640,6 +640,28 @@ body.reading.ctl-on #toc-panel {
   background: var(--pill); border-radius: 4px; padding: 3px;
 }
 #list-grid.list .lib-card .prog { display: none; }
+/* 桌面端（可悬停设备）：恢复悬停显隐与选中焦点框；触屏设备不受影响 */
+@media (hover: hover) and (pointer: fine) {
+  .lib-card .eye-toggle,
+  .lib-card .edit-btn,
+  .lib-card .refresh-btn {
+    opacity: 0;
+    transition: opacity .15s var(--ease);
+  }
+  .lib-card:hover .eye-toggle,
+  .lib-card:hover .edit-btn,
+  .lib-card:hover .refresh-btn,
+  .lib-card.sel .eye-toggle,
+  .lib-card.sel .edit-btn,
+  .lib-card.sel .refresh-btn {
+    opacity: 1;
+  }
+  .lib-card.sel {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-m);
+  }
+}
 @keyframes card-in {
   from { opacity: 0; transform: translateY(10px); }
 }
