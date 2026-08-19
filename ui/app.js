@@ -5209,11 +5209,4 @@ document.addEventListener('keydown', (e) => {
   const start = await invoke('initial_dir');
   await loadDir(start);
   openLibGrid(); // 应用始终为图标模式
-  // 跨设备进度同步：后台拉取 ntfy 进度快照，有更新再刷新显示（失败静默，不阻塞启动）
-  invoke('sync_pull').then(n => {
-    if (n > 0) {
-      refreshFavorites();
-      if (cwd) loadDir(cwd);
-    }
-  }).catch(() => {});
 })();
