@@ -12,14 +12,20 @@ PDF、EPUB 的丝滑阅读体验，是 cshow 终端阅读器的 GUI 版。
 
 ## Screenshots / 截图
 
-| ![电子书书库](screenshots/library-ebooks.png) | ![电子书书库·选中](screenshots/library-ebooks-selected.png) |
-| 电子书书库（网格、标签、评分、阅读统计） | 电子书书库（选中书籍高亮） |
-| ![漫画书库](screenshots/library-manga.png) | ![漫画翻页阅读](screenshots/manga-reader.png) |
-| 漫画书库 | 漫画翻页阅读（双页，条漫卷） |
-| ![文字书双页阅读](screenshots/text-reader.png) | |
-| 文字书双页阅读（羊皮纸主题） | |
+<div align="center">
 
-书库网格 · 漫画 · 翻页阅读 · 文字书双页阅读：本地优先，阅读全程离线。
+| 书库 | 阅读 |
+| --- | --- |
+| <a href="screenshots/library-ebooks.png"><img src="screenshots/library-ebooks.png" width="100%" alt="电子书书库"></a> | <a href="screenshots/library-manga.png"><img src="screenshots/library-manga.png" width="100%" alt="漫画书库"></a> |
+| <sub>电子书书库 · 网格、标签、评分、阅读统计</sub> | <sub>漫画书库</sub> |
+| <a href="screenshots/library-ebooks-selected.png"><img src="screenshots/library-ebooks-selected.png" width="100%" alt="电子书书库·选中"></a> | <a href="screenshots/manga-reader.png"><img src="screenshots/manga-reader.png" width="100%" alt="漫画翻页阅读"></a> |
+| <sub>电子书书库 · 选中书籍高亮</sub> | <sub>漫画翻页阅读 · 双页，条漫卷</sub> |
+| <a href="screenshots/text-reader.png"><img src="screenshots/text-reader.png" width="100%" alt="文字书双页阅读"></a> | |
+| <sub>文字书双页阅读 · 羊皮纸主题</sub> | |
+
+点击任意截图可查看原图。本地优先，阅读全程离线。
+
+</div>
 
 ---
 
