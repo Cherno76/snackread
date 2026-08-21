@@ -14,6 +14,14 @@
 - ✅ 真机验证（2026-08-17，NX769J / Android 16）：应用已安装并成功启动，
   应用内部存储工作目录自动创建（`cshow-work/`：SQLite 库 + `Books/` + `epub/` + `thumbs/`），
   无崩溃日志
+- ✅ 朗读（TTS）：Android 版文字书（EPUB 文字书 / TXT）支持系统 TTS 朗读——
+  原生桥 `TtsBridge.kt`（`window.AndroidTts`）调系统 TextToSpeech 引擎，
+  JS 层逐句朗读 + 句子高亮 + 跨章续读 + 暂停/继续 + 语速调节；
+  中文自动按 `zh-CN` 读（依赖系统已装的中文语音，如 Google 语音合成/讯飞）。
+  已真机验证（T50Mini + SherpaTTS 离线中文引擎，v0.5.57）朗读成功。
+  注意：Android 11+ 必须在 Manifest 声明 `<queries>`（TTS_SERVICE intent）
+  才能绑定第三方 TTS 引擎；TtsBridge 的引擎操作必须走主线程；
+  初始化状态哨兵不能用 -1（与 TextToSpeech.ERROR 冲突）。
 - ⏳ Phase 3 触摸交互适配（hover→tap、导入入口）未开始
 
 ## 1. 可行性分析

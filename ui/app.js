@@ -1388,6 +1388,14 @@ function buildTocPanel() {
   groups.forEach((g, gi) => {
     const collapsed = !!g.header && gi !== expandedGi;
     if (collapsed) tocCollapsed.add(gi);
+    if (g.header && g.items.length === 0) {
+      // 卷/册行下没有任何子章节（只有一层的卷=章，如短篇小说集）：
+      // 直接作为可点击章节项，避免被当成只能展开/折叠的卷头导致目录点击无效
+      const li = makeTocItemEl(g.header);
+      li.classList.add('toc-chapter');
+      frag.appendChild(li);
+      return;
+    }
     let headerEl = null;
     if (g.header) {
       headerEl = document.createElement('li');
@@ -1674,6 +1682,7 @@ function setFocus(f) {
   pageModeEl.classList.remove('show');
   themeBtnEl.classList.remove('show');
   readerBackEl.classList.remove('show');
+  if (f !== 'strip') ttsStop(); // 退出阅读：停止朗读并清除高亮
   versionEl.style.display = f === 'strip' ? 'none' : '';
   // 阅读：标题栏/底部状态栏默认隐藏，随控件呼出
   document.body.classList.toggle('reading', f === 'strip');
@@ -2082,6 +2091,7 @@ const libPathEl = document.getElementById('lib-path');
 const libDirsEl = document.getElementById('lib-dirs');
 const libAddEl = document.getElementById('lib-add');
 const libStateEl = document.getElementById('lib-state');
+const libVolumesEl = document.getElementById('lib-volumes');
 const libApiKeyEl = document.getElementById('lib-apikey-input');
 const libApiKeySaveEl = document.getElementById('lib-apikey-save');
 const libApiKeyStateEl = document.getElementById('lib-apikey-state');
@@ -2134,6 +2144,7 @@ libPresetExportEl.addEventListener('click', async () => {
 function openLibDialog() {
   libBrowsePath = cwd || (favorites[0] && favorites[0].path) || '/';
   loadApiKeyInput();
+  loadLibVolumes();
   renderLibList();
   renderLibDirs();
   libDialogEl.hidden = false;
@@ -2142,6 +2153,34 @@ function openLibDialog() {
 function closeLibDialog() {
   libDialogEl.hidden = true;
 }
+
+// 加载可浏览的存储卷（Android：内部存储 + 外部 TF/SD 卡；桌面端返回空自动隐藏）
+async function loadLibVolumes() {
+  libVolumesEl.innerHTML = '';
+  let vols = [];
+  try {
+    vols = await invoke('storage_roots');
+  } catch { /* 桌面/不支持则忽略 */ }
+  if (!vols || !vols.length) {
+    libVolumesEl.hidden = true;
+    return;
+  }
+  for (const v of vols) {
+    const o = document.createElement('option');
+    o.value = v;
+    const label = v.startsWith('/storage/emulated/') ? '内部存储' : '外部存储';
+    o.textContent = label + ' · ' + v;
+    libVolumesEl.appendChild(o);
+  }
+  libVolumesEl.hidden = false;
+}
+
+libVolumesEl.addEventListener('change', () => {
+  const v = libVolumesEl.value;
+  if (!v) return;
+  libBrowsePath = v;
+  renderLibDirs();
+});
 
 function renderLibList() {
   libListEl.innerHTML = '';
@@ -2830,6 +2869,7 @@ async function ensureEpubStrip(en) {
     return;
   }
   textBook = !!epubMeta.text_book;
+  ttsResetBook();
   textChapterPages = [];
   textChapterStart = [];
   textTotalPages = 0;
@@ -3053,6 +3093,36 @@ window.addEventListener('message', (e) => {
   }
   if (d.cshowAnchorDone) {
     pendingAnchor = null;
+    return;
+  }
+  if (d.cshowTtsText) {
+    // reader 上报本章段落文本（朗读用；也兜住 boot 时的主动上报）
+    const ch = parseInt(d.cshowTtsText.chapter, 10) || 0;
+    const texts = (d.cshowTtsText.texts || []).filter((t) => typeof t === 'string' && t);
+    ttsChapterTexts[ch] = texts;
+    const w = ttsTextWaiters.get(ch);
+    if (w) w.finish(texts);
+    return;
+  }
+  if (d.cshowTtsVisible) {
+    const ch = parseInt(d.cshowTtsVisible.chapter, 10) || 0;
+    if (ch === ttsVisibleChapter && ttsVisibleWaiter) {
+      const f = ttsVisibleWaiter;
+      ttsVisibleWaiter = null;
+      f(d.cshowTtsVisible.pi || 0);
+    }
+    return;
+  }
+  if (d.cshowTtsCol) {
+    // 翻页模式：reader 上报当前朗读段落的列号，父窗口翻到该页
+    if (flipOn && textBook && ttsState !== 'idle' && (d.cshowTtsCol.chapter || 0) === ttsChapter) {
+      const frame = textFrame(ttsChapter);
+      if (frame && frame.contentWindow) {
+        try {
+          frame.contentWindow.postMessage({ cshow: 'reader', type: 'goto', page: d.cshowTtsCol.col || 0 }, '*');
+        } catch { /* 忽略 */ }
+      }
+    }
     return;
   }
 });
@@ -3954,6 +4024,452 @@ tocCloseBtn.addEventListener('click', closeTocPanel);
 fontMinusBtn.addEventListener('click', () => changeFontSize(-1));
 fontPlusBtn.addEventListener('click', () => changeFontSize(1));
 fontFamilyBtn.addEventListener('click', cycleFontFamily);
+
+// ---- 朗读（TTS）：Android 走系统 TextToSpeech（window.AndroidTts 原生桥），
+//      桌面/开发环境回退到 Web Speech API（speechSynthesis），句子/高亮/翻章逻辑共用 ----
+
+const ttsBtnEl = document.getElementById('tts-btn');
+const ttsBarEl = document.getElementById('tts-bar');
+const ttsTextEl = document.getElementById('tts-text');
+const ttsRateMinusEl = document.getElementById('tts-rate-minus');
+const ttsRatePlusEl = document.getElementById('tts-rate-plus');
+const ttsRateEl = document.getElementById('tts-rate');
+const ttsPauseLenEl = document.getElementById('tts-pause-len');
+const ttsPauseBtnEl = document.getElementById('tts-pause');
+const ttsStopBtnEl = document.getElementById('tts-stop');
+
+let ttsRate = 1.0;
+try { ttsRate = parseFloat(localStorage.getItem('cshow.ttsRate')) || 1.0; } catch { /* 忽略 */ }
+// 句间停顿：xs=整段合并（停顿最少） short=每~120字一停 mid=每~50字一停 long=每句单独读（停顿最多）
+let ttsPauseLen = 'mid';
+try {
+  const p = localStorage.getItem('cshow.ttsPause');
+  if (p === 'xs' || p === 'short' || p === 'mid' || p === 'long') ttsPauseLen = p;
+} catch { /* 忽略 */ }
+let ttsState = 'idle';          // idle | playing | paused
+let ttsEngine = null;           // 'android' | 'web' | null
+let ttsChapter = -1;            // 当前朗读章节
+let ttsChapterTexts = {};       // 章 -> 段落文本数组（父窗口跨源，只存文本）
+let ttsParas = [];              // 当前章段落文本
+let ttsUnits = [];              // 拍平后的句子 [{pi, text}]
+let ttsUnitIdx = 0;
+let ttsSeq = 0;
+let ttsCurId = null;
+let ttsResumeFrom = 0;          // 暂停时当前句内偏移
+let ttsLastRange = null;        // {id, start} 最近一次引擎 range 事件
+let ttsAndroidInit = false;
+const ttsTextWaiters = new Map(); // chapter -> {finish}
+let ttsVisibleChapter = -1;
+let ttsVisibleWaiter = null;
+
+// Android 原生桥事件入口（TtsBridge.kt 经 evaluateJavascript 调用）
+window.__ttsEvent = function (type, payload) {
+  if (type === 'init') {
+    ttsAndroidInit = String(payload) === '0';
+    return;
+  }
+  if (type === 'range') {
+    // 引擎报告本句已读到的字符范围：暂停时据此从字偏移继续
+    if (ttsState === 'playing' && ttsCurId) {
+      try {
+        const a = JSON.parse(payload || '[]');
+        if (a.length >= 2 && typeof a[0] === 'number') ttsLastRange = { id: ttsCurId, start: a[0] };
+      } catch { /* 忽略 */ }
+    }
+    return;
+  }
+  ttsEngineEvent(type, payload);
+};
+
+function ttsEngineKind() {
+  if (window.AndroidTts) return 'android';
+  if (typeof window.speechSynthesis !== 'undefined' && typeof window.SpeechSynthesisUtterance !== 'undefined') return 'web';
+  return null;
+}
+
+function ttsLangFor(text) {
+  // 含汉字按中文读，其余按英文兜底（系统引擎未装对应语音时自动回退默认音）
+  return /[\u3400-\u4dbf\u4e00-\u9fff]/.test(text) ? 'zh-CN' : 'en-US';
+}
+
+// SherpaTTS（melo-tts）对中文逗号“，”存在停顿 BUG（会卡 3 秒）：
+// 朗读前把“，”替换为空格（保留自然间隔），句号/问号/感叹号保留，节奏不受影响
+function ttsPreprocess(text) {
+  return text.replace(/，/g, ' ');
+}
+
+// 按中文/英文句读切句，过短的残片并入上一句
+function ttsSplitSentences(text) {
+  const out = [];
+  let buf = '';
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1] || '';
+    buf += ch;
+    // 中文按 。！？； 切；英文按 .!?; 且后随空白/结尾切（避免把缩写里的点切开）
+    // 缩写（Dr./Mr./Mrs./U.S. 等词尾短点）不切句
+    const abbrev = ch === '.' && /[A-Za-z]{1,3}$/.test(buf.slice(0, -1));
+    const term = /[。！？；]/.test(ch) || (/[.!?;]/.test(ch) && (/\s/.test(next) || !next) && !abbrev);
+    if (term) { out.push(buf); buf = ''; }
+  }
+  if (buf.trim()) out.push(buf);
+  const merged = [];
+  for (const s of out) {
+    const t = s.trim();
+    if (!t) continue;
+    if (merged.length && t.length < 8 && !/[。！？；.!?;]$/.test(t)) {
+      merged[merged.length - 1] += s; // 引号尾巴等短残片
+    } else {
+      merged.push(s);
+    }
+  }
+  return merged;
+}
+
+function ttsFlatten(paras) {
+  const units = [];
+  // 每句单独合成会让句号处叠加引擎尾音停顿；按停顿档位把句子合并成组，
+  // 组内标点由模型自然停顿，只有组尾才有一次合成边界
+  const maxChars = ttsPauseLen === 'xs' ? 400 : ttsPauseLen === 'short' ? 120 : ttsPauseLen === 'mid' ? 50 : 0;
+  for (let pi = 0; pi < paras.length; pi++) {
+    const sentences = ttsSplitSentences(paras[pi]);
+    if (ttsPauseLen === 'long') {
+      for (const s of sentences) {
+        if (s && s.trim()) units.push({ pi, text: s });
+      }
+      continue;
+    }
+    let buf = '';
+    for (const s of sentences) {
+      if (!s || !s.trim()) continue;
+      buf += s;
+      if (buf.length >= maxChars) {
+        units.push({ pi, text: buf });
+        buf = '';
+      }
+    }
+    if (buf.trim()) {
+      units.push({ pi, text: buf });
+    }
+  }
+  return units;
+}
+
+// 请求某章段落文本（跨源：reader.js 在 iframe 内读取 DOM 后回传）
+function ttsRequestChapterText(ch, timeoutMs) {
+  return new Promise((resolve) => {
+    const frame = textFrame(ch);
+    if (!frame || !frame.contentWindow) { resolve([]); return; }
+    let settled = false;
+    const finish = (texts) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      const w = ttsTextWaiters.get(ch);
+      if (w && w.finish === finish) ttsTextWaiters.delete(ch);
+      resolve(texts || []);
+    };
+    const timer = setTimeout(() => finish([]), timeoutMs || 1500);
+    ttsTextWaiters.set(ch, { finish });
+    try {
+      frame.contentWindow.postMessage({ cshow: 'reader', type: 'ttsreq' }, '*');
+    } catch { finish([]); }
+  });
+}
+
+async function ttsEnsureChapter(ch) {
+  if (ttsChapterTexts[ch]) return ttsChapterTexts[ch];
+  await loadTextChapter(ch);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const texts = await ttsRequestChapterText(ch, 1500);
+    if (texts && texts.length) {
+      ttsChapterTexts[ch] = texts;
+      return texts;
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return ttsChapterTexts[ch] || [];
+}
+
+function ttsVisiblePara(ch) {
+  return new Promise((resolve) => {
+    const frame = textFrame(ch);
+    if (!frame || !frame.contentWindow) { resolve(0); return; }
+    let settled = false;
+    const finish = (pi) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (ttsVisibleWaiter === finish) ttsVisibleWaiter = null;
+      resolve(pi || 0);
+    };
+    const timer = setTimeout(() => finish(0), 1200);
+    ttsVisibleChapter = ch;
+    ttsVisibleWaiter = finish;
+    try {
+      frame.contentWindow.postMessage({ cshow: 'reader', type: 'ttsvisible' }, '*');
+    } catch { finish(0); }
+  });
+}
+
+function ttsMark(pi) {
+  const frame = textFrame(ttsChapter);
+  if (frame && frame.contentWindow) {
+    try { frame.contentWindow.postMessage({ cshow: 'reader', type: 'ttsmark', pi }, '*'); } catch { /* 忽略 */ }
+  }
+}
+
+function ttsSpeakUnit(pi, text, fromChar) {
+  ttsLastRange = null;
+  ttsCurId = 'tts' + (++ttsSeq);
+  ttsMark(pi);
+  const part = ttsPreprocess(fromChar > 0 ? text.slice(fromChar) : text);
+  const lang = ttsLangFor(text);
+  if (ttsEngine === 'android') {
+    const id = ttsCurId;
+    if (window.AndroidTts.speak(part, lang, ttsRate, 1.0, id)) return;
+    // 引擎偶发未就绪：稍后重试一次，仍失败则跳过本句
+    setTimeout(() => {
+      if (ttsState === 'playing' && ttsCurId === id) {
+        if (window.AndroidTts.speak(part, lang, ttsRate, 1.0, id)) return;
+        ttsEngineEvent('error', id);
+      }
+    }, 500);
+  } else if (ttsEngine === 'web') {
+    const id = ttsCurId;
+    const u = new window.SpeechSynthesisUtterance(part);
+    u.lang = lang;
+    u.rate = ttsRate;
+    u.pitch = 1;
+    u.onstart = () => ttsEngineEvent('start', id);
+    u.onend = () => ttsEngineEvent('done', id);
+    u.onerror = () => ttsEngineEvent('error', id);
+    u.onboundary = (ev) => { if (ttsCurId === id) ttsLastRange = { id, start: ev.charIndex || 0 }; };
+    try { window.speechSynthesis.speak(u); } catch { ttsEngineEvent('error', id); }
+  }
+}
+
+function ttsAndroidReady() {
+  return new Promise((resolve) => {
+    if (!window.AndroidTts) { resolve(false); return; }
+    const t0 = Date.now();
+    const tick = () => {
+      let info = null;
+      try { info = JSON.parse(window.AndroidTts.getInfo() || '{}'); } catch { /* 忽略 */ }
+      // 引擎初始化失败后桥会自动重建重试（主线程），这里只认 ready，超时才放弃
+      if (info && info.ready) { resolve(true); return; }
+      // 引擎首次初始化/模型加载可能要几秒，给足 8 秒
+      if (Date.now() - t0 > 8000) { resolve(false); return; }
+      setTimeout(tick, 250);
+    };
+    tick();
+  });
+}
+
+function ttsSettingsOpen() {
+  if (window.AndroidTts && window.AndroidTts.openTtsSettings) {
+    try { window.AndroidTts.openTtsSettings(); } catch { /* 忽略 */ }
+  }
+}
+
+// TTS 引擎缺失/不可用提示：Android 上带「打开系统 TTS 设置」按钮
+function showTtsHint(msg) {
+  const box = document.createElement('div');
+  box.className = 'confirm-box';
+  const canOpen = !!window.AndroidTts;
+  box.innerHTML =
+    `<div class="confirm-dialog"><p>${escapeHtml(msg)}</p>` +
+    '<div class="confirm-actions">' +
+    (canOpen ? '<button class="btn confirm-settings">打开系统 TTS 设置</button>' : '') +
+    '<button class="btn btn-primary confirm-yes">知道了</button>' +
+    '</div></div>';
+  document.body.appendChild(box);
+  const close = () => box.remove();
+  box.querySelector('.confirm-yes').addEventListener('click', close);
+  const sb = box.querySelector('.confirm-settings');
+  if (sb) sb.addEventListener('click', () => { ttsSettingsOpen(); close(); });
+  box.addEventListener('click', (e) => { if (e.target === box) close(); });
+}
+
+function ttsEngineEvent(type, id) {
+  if (ttsState !== 'playing' || id !== ttsCurId) return; // 暂停/停止后的迟到事件忽略
+  if (type === 'done' || type === 'error') {
+    ttsUnitIdx++;
+    if (ttsUnitIdx >= ttsUnits.length) { ttsNextChapter(); return; }
+    const u = ttsUnits[ttsUnitIdx];
+    ttsSpeakUnit(u.pi, u.text, 0);
+    updateTtsUi();
+  }
+}
+
+async function ttsStart() {
+  if (!textBook || !epubMeta || focus !== 'strip') return;
+  if (ttsState !== 'idle') { ttsStop(); return; }
+  ttsEngine = ttsEngineKind();
+  if (!ttsEngine) {
+    showTtsHint('未检测到 TTS 引擎，无法朗读。\n请安装一个离线 TTS 引擎（如讯飞语音引擎 / eSpeak / SherpaTTS），然后点下方按钮把它设为系统默认引擎。');
+    return;
+  }
+  if (ttsEngine === 'android') {
+    const ok = await ttsAndroidReady();
+    if (!ok) {
+      showTtsHint('系统 TTS 引擎不可用（未安装或已停用）。\n请在系统「文字转语音」设置中安装并启用一个引擎（讯飞 / eSpeak / SherpaTTS 等）。');
+      return;
+    }
+  }
+  const ch = flipOn ? textCurChapter : currentStripIndex();
+  const texts = await ttsEnsureChapter(ch);
+  if (ttsState !== 'idle') return;
+  if (!texts || texts.length === 0) {
+    showAlert('本章没有可朗读的文字');
+    return;
+  }
+  const visiblePi = await ttsVisiblePara(ch);
+  ttsChapter = ch;
+  ttsParas = texts;
+  ttsUnits = ttsFlatten(texts);
+  let start = 0;
+  for (let i = 0; i < ttsUnits.length; i++) {
+    if (ttsUnits[i].pi >= visiblePi) { start = i; break; }
+  }
+  if (start >= ttsUnits.length) start = Math.max(0, ttsUnits.length - 1);
+  ttsUnitIdx = start;
+  ttsState = 'playing';
+  updateTtsUi();
+  const u = ttsUnits[ttsUnitIdx];
+  ttsSpeakUnit(u.pi, u.text, 0);
+}
+
+function ttsPause() {
+  if (ttsState !== 'playing') return;
+  ttsState = 'paused';
+  // 有 range 事件（引擎支持字符级进度）则从字偏移继续，否则暂停后整句重读
+  ttsResumeFrom = (ttsLastRange && ttsLastRange.id === ttsCurId) ? ttsLastRange.start : 0;
+  ttsLastRange = null;
+  if (ttsEngine === 'android') window.AndroidTts.stop();
+  else if (ttsEngine === 'web') window.speechSynthesis.cancel();
+  updateTtsUi();
+}
+
+function ttsResume() {
+  if (ttsState !== 'paused') return;
+  ttsState = 'playing';
+  const u = ttsUnits[ttsUnitIdx];
+  const from = ttsResumeFrom || 0;
+  ttsResumeFrom = 0;
+  if (u) ttsSpeakUnit(u.pi, u.text, from);
+  updateTtsUi();
+}
+
+function ttsStop() {
+  const wasActive = ttsState !== 'idle';
+  const ch = ttsChapter;
+  ttsState = 'idle';
+  if (ttsEngine === 'android') window.AndroidTts.stop();
+  else if (ttsEngine === 'web') window.speechSynthesis.cancel();
+  if (wasActive && ch >= 0) {
+    const frame = textFrame(ch);
+    if (frame && frame.contentWindow) {
+      try { frame.contentWindow.postMessage({ cshow: 'reader', type: 'ttsmark', pi: -1 }, '*'); } catch { /* 忽略 */ }
+    }
+  }
+  ttsChapter = -1;
+  ttsParas = [];
+  ttsUnits = [];
+  ttsUnitIdx = 0;
+  ttsResumeFrom = 0;
+  ttsLastRange = null;
+  updateTtsUi();
+}
+
+async function ttsNextChapter() {
+  const n = epubMeta ? epubMeta.spine.length : 0;
+  const next = ttsChapter + 1;
+  if (next >= n) {
+    showAlert('本书已朗读完毕');
+    ttsStop();
+    return;
+  }
+  if (flipOn) {
+    textShowChapter(next, 0, false);
+  } else {
+    const holder = holderFor(next);
+    if (holder) holder.scrollIntoView({ block: 'start' });
+    else stripEl.scrollIntoView({ block: 'start' });
+  }
+  const texts = await ttsEnsureChapter(next);
+  if (ttsState !== 'playing') return;
+  if (!texts || texts.length === 0) {
+    ttsChapter = next;
+    ttsNextChapter(); // 空章（封面/版权页）跳过
+    return;
+  }
+  ttsChapter = next;
+  ttsParas = texts;
+  ttsUnits = ttsFlatten(texts);
+  ttsUnitIdx = 0;
+  const u = ttsUnits[0];
+  if (u) ttsSpeakUnit(u.pi, u.text, 0);
+  updateTtsUi();
+}
+
+function updateTtsUi() {
+  const active = ttsState !== 'idle';
+  ttsBtnEl.classList.toggle('on', active);
+  ttsBtnEl.textContent = active ? '停止' : '朗读';
+  ttsBtnEl.title = active ? '停止朗读' : '朗读（系统 TTS）';
+  ttsBarEl.hidden = !active;
+  ttsRateEl.textContent = ttsRate + 'x';
+  ttsPauseLenEl.textContent = '停顿·' + (ttsPauseLen === 'xs' ? '极短' : ttsPauseLen === 'short' ? '短' : ttsPauseLen === 'mid' ? '中' : '长');
+  ttsPauseLenEl.title = '句间停顿：极短（整段合并）/ 短 / 中 / 长（每句单独读）';
+  if (active) {
+    const u = ttsUnits[ttsUnitIdx];
+    ttsTextEl.textContent = u ? u.text : '';
+    ttsPauseBtnEl.textContent = ttsState === 'paused' ? '▶' : '⏸';
+    ttsPauseBtnEl.title = ttsState === 'paused' ? '继续' : '暂停';
+  }
+}
+
+function ttsChangeRate(delta) {
+  ttsRate = Math.min(2, Math.max(0.5, Math.round((ttsRate + delta) * 4) / 4));
+  try { localStorage.setItem('cshow.ttsRate', String(ttsRate)); } catch { /* 忽略 */ }
+  updateTtsUi();
+}
+
+// 停顿档位切换后按当前段落位置重建句子分组，下一句即按新档位朗读
+function ttsRebuildUnits() {
+  if (ttsChapter < 0 || !ttsParas.length) return;
+  const curPi = ttsUnits[ttsUnitIdx] ? ttsUnits[ttsUnitIdx].pi : 0;
+  ttsUnits = ttsFlatten(ttsParas);
+  ttsUnitIdx = 0;
+  for (let i = 0; i < ttsUnits.length; i++) {
+    if (ttsUnits[i].pi >= curPi) { ttsUnitIdx = i; break; }
+  }
+  if (ttsUnitIdx >= ttsUnits.length) ttsUnitIdx = Math.max(0, ttsUnits.length - 1);
+  updateTtsUi();
+}
+
+function ttsCyclePauseLen() {
+  // 每次点击往更短走：长→中→短→极短→长（多数人想要更顺）
+  ttsPauseLen = ttsPauseLen === 'long' ? 'mid' : ttsPauseLen === 'mid' ? 'short' : ttsPauseLen === 'short' ? 'xs' : 'long';
+  try { localStorage.setItem('cshow.ttsPause', ttsPauseLen); } catch { /* 忽略 */ }
+  ttsRebuildUnits();
+}
+
+function ttsResetBook() {
+  ttsStop();
+  ttsChapterTexts = {};
+}
+
+ttsBtnEl.addEventListener('click', ttsStart);
+ttsPauseBtnEl.addEventListener('click', () => {
+  if (ttsState === 'playing') ttsPause();
+  else if (ttsState === 'paused') ttsResume();
+});
+ttsStopBtnEl.addEventListener('click', ttsStop);
+ttsRateMinusEl.addEventListener('click', () => ttsChangeRate(-0.25));
+ttsRatePlusEl.addEventListener('click', () => ttsChangeRate(0.25));
+ttsPauseLenEl.addEventListener('click', ttsCyclePauseLen);
 // 点抽屉遮罩外关闭（点击目录面板外部区域）
 tocPanelEl.addEventListener('click', (e) => {
   if (e.target === tocPanelEl) closeTocPanel();

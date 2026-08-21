@@ -1270,7 +1270,7 @@ fn llm_fetch_impl(
         "response_format": {"type": "json_object"},
     });
 
-    let ua = format!("cshow-gui/{DEEPSEEK_MODEL}");
+    let ua = format!("snack-read/{DEEPSEEK_MODEL}");
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_secs(5))
         .timeout(Duration::from_secs(60))
@@ -2065,9 +2065,10 @@ fn initial_dir(state: tauri::State<'_, db::Db>) -> String {
         let saved = saved.trim().to_string();
         if !saved.is_empty() && Path::new(&saved).is_dir() {
             // Android：旧版可能把目录存在了应用私有空间（出不去也到不了手机存储），
-            // 只恢复手机存储里的路径，否则回到存储根目录
+            // 只恢复 /storage/ 下的路径（内部存储 /storage/emulated/0 或外部 TF 卡
+            // /storage/<uuid>），否则回到存储根目录。
             #[cfg(target_os = "android")]
-            if !saved.starts_with("/storage/emulated/") {
+            if !saved.starts_with("/storage/") {
                 return android_default_start_dir();
             }
             return saved.replace('\\', "/");
@@ -2089,6 +2090,61 @@ fn android_default_start_dir() -> String {
         norm_path(&pub_root)
     } else {
         norm_path(&android_home())
+    }
+}
+
+/// 枚举安卓可访问的存储卷（内部存储 + 可移除外部 TF/SD 卡），供书库浏览跳转。
+/// 非安卓返回空。读取 /proc/mounts 找出 /storage/<卷> 挂载点（排除 /storage/self 与
+/// /storage/emulated 这类合成挂载），并保证内部存储 /storage/emulated/0 排在首位。
+#[tauri::command]
+fn storage_roots() -> Vec<String> {
+    #[cfg(target_os = "android")]
+    {
+        let mut volumes: Vec<String> = Vec::new();
+        if let Ok(mounts) = fs::read_to_string("/proc/mounts") {
+            for line in mounts.lines() {
+                let mount = line.split_whitespace().nth(1).unwrap_or("");
+                if !mount.starts_with("/storage/") {
+                    continue;
+                }
+                // 只保留顶层真卷：/storage/<uuid>（TF 卡）与 /storage/emulated/0（内部存储根）。
+                // 排除 /storage/self、/storage/emulated（目录架）、/storage/sdcard0（软链），
+                // 以及 /storage/emulated/0/Android/data 这类子挂载点。
+                let rest = &mount["/storage/".len()..];
+                let is_top = !rest.contains('/');
+                let is_internal_base = rest == "emulated/0";
+                if !(is_top || is_internal_base) {
+                    continue;
+                }
+                if mount == "/storage/self"
+                    || mount == "/storage/emulated"
+                    || mount == "/storage/sdcard0"
+                {
+                    continue;
+                }
+                let p = Path::new(mount);
+                if p.is_dir() && !volumes.iter().any(|v| v == mount) {
+                    volumes.push(mount.to_string());
+                }
+            }
+        }
+        // 内部存储优先；若 /proc/mounts 未单列 /storage/emulated/0，补上以保底
+        if !volumes.iter().any(|v| v.starts_with("/storage/emulated/")) {
+            let em0 = PathBuf::from("/storage/emulated/0");
+            if em0.is_dir() {
+                volumes.insert(0, norm_path(&em0));
+            }
+        }
+        volumes.sort_by(|a, b| {
+            let a_em = a.starts_with("/storage/emulated/");
+            let b_em = b.starts_with("/storage/emulated/");
+            b_em.cmp(&a_em).then_with(|| a.cmp(b))
+        });
+        volumes
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Vec::new()
     }
 }
 
@@ -2368,7 +2424,7 @@ fn epub_cache_key(path: &Path) -> String {
         .map(|e| e.eq_ignore_ascii_case("txt"))
         .unwrap_or(false)
     {
-        "txt-cache-v4".hash(&mut h);
+        "txt-cache-v5".hash(&mut h);
     }
     path.hash(&mut h);
     if let Ok(m) = fs::metadata(path) {
@@ -3747,6 +3803,27 @@ fn escape_html(s: &str) -> String {
     out
 }
 
+/// 只有一层“卷/册/部/集”时的章节标题转换：保留原编号与标题，
+/// “第一册 飞向半人马星座” → “第一章 飞向半人马星座”。
+/// 非标准形式（如“书名·第X册”）按出现顺序编号兜底。
+fn volume_label_to_chapter(raw: &str, seq: usize) -> String {
+    let t = raw.trim();
+    if let Some(c) = Regex::new(r"^第\s*([0-9零一二三四五六七八九十百千]+)\s*(?:卷|部|册|集)(.*)$")
+        .unwrap()
+        .captures(t)
+    {
+        let num_s = c[1].to_string();
+        let title = c.get(2).map(|m| m.as_str().trim()).unwrap_or("");
+        if title.is_empty() {
+            format!("第{num_s}章")
+        } else {
+            format!("第{num_s}章 {title}")
+        }
+    } else {
+        format!("第{}章 {t}", seq + 1)
+    }
+}
+
 /// 无任何章节标题的兜底：按约 5000 行切分，避免生成超大单章
 fn fallback_txt_chapters(lines: &[&str]) -> Vec<TxtChapter> {
     let mut out = Vec::new();
@@ -3783,6 +3860,30 @@ fn parse_txt_book(src: &Path, base: &Path) -> Result<EpubMeta, String> {
         volumes.push(TxtVolume { label: String::new() });
         for (i, ch) in chapters.iter().enumerate() {
             toc.push(TocEntry { label: ch.title.clone(), chapter: i, anchor: None, depth: 1 });
+        }
+    } else if headings.iter().all(|h| h.kind == TxtHeadingKind::Volume) {
+        // 只有卷/册、没有章节（短篇小说集常见，每册即一篇）：每册直接作为一章，
+        // 标题转成“第X章 …”（如“第一册 飞向半人马星座”→“第一章 飞向半人马星座”），
+        // 避免前端把含“册”的标题误判成卷标记导致目录点击失效。
+        // 开头目录区常重复罗列同名卷标（“目录”列表 + 正文实际标题），
+        // 按标签去重只保留最后一次出现，避免生成整册空章。
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut volume_heads: Vec<&TxtHeading> = Vec::new();
+        for h in headings.iter().rev() {
+            if seen.insert(h.raw.clone()) {
+                volume_heads.push(h);
+            }
+        }
+        volume_heads.reverse();
+        volumes.push(TxtVolume { label: String::new() });
+        for (i, h) in volume_heads.iter().enumerate() {
+            let end = volume_heads.get(i + 1).map(|n| n.line).unwrap_or(lines.len());
+            let idx = chapters.len();
+            let label = volume_label_to_chapter(&h.raw, i);
+            let mut ch = make_txt_chapter(&lines, h, end, idx);
+            ch.title = label.clone();
+            chapters.push(ch);
+            toc.push(TocEntry { label, chapter: idx, anchor: None, depth: 1 });
         }
     } else {
         volumes.push(TxtVolume { label: String::new() });
@@ -5258,12 +5359,66 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
     }
 
+    #[test]
+    fn txt_book_volume_only() {
+        // 短篇小说集：只有“第X册”，没有“第X章”；开头目录区重复罗列了同名册标。
+        // 每册应转成“第X章 标题”，保证前端当普通章节处理。
+        let base = std::env::temp_dir().join(format!("cshow-txtvolonly-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let txt = base.join("b.txt");
+        let content = "\
+《飞向半人马星座》 作者：范·沃格特
+
+出版说明
+　　这是出版说明正文。
+
+目录
+
+第一册 飞向半人马星座
+
+第二册 怪物
+
+第三册 蛰伏
+
+第一册 飞向半人马星座
+
+　　第一册正文一段。
+　　第一册正文二段。
+
+第二册 怪物
+
+　　第二册正文一段。
+
+第三册 蛰伏
+
+　　第三册正文一段。
+";
+        fs::write(&txt, content).unwrap();
+        let meta = parse_txt_book(&txt, &base.join("cache")).unwrap();
+        assert_eq!(meta.spine.len(), 3, "每册一章，共 3 章");
+        assert_eq!(
+            meta.chapter_titles,
+            vec!["第一章 飞向半人马星座", "第二章 怪物", "第三章 蛰伏"]
+        );
+        let toc: Vec<&str> = meta.toc.iter().map(|t| t.label.as_str()).collect();
+        assert_eq!(toc, vec!["第一章 飞向半人马星座", "第二章 怪物", "第三章 蛰伏"]);
+        assert_eq!(meta.chapter_lengths[0], 16); // 两段正文非空白字符数
+        // 章节 XHTML：转换后的章标作为标题、正文成段
+        let chap = fs::read_to_string(base.join("cache/txt_chap_0001.xhtml")).unwrap();
+        assert!(chap.contains("<h2>第一章 飞向半人马星座</h2>"));
+        assert!(!chap.contains("<h2>第一册"));
+        assert_eq!(chap.matches("<p>").count(), 2);
+        assert!(chap.contains("第一册正文一段"));
+        let _ = fs::remove_dir_all(&base);
+    }
+
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     if std::env::args().any(|a| a == "--version" || a == "-v") {
-        println!("cshow-gui {}", env!("CARGO_PKG_VERSION"));
+        println!("snack-read {}", env!("CARGO_PKG_VERSION"));
         return;
     }
     env_logger::init();
@@ -5422,6 +5577,7 @@ pub fn run() {
             mark_migrated,
             app_version,
             initial_dir,
+            storage_roots,
             quit_app
         ])
         .run(tauri::generate_context!())

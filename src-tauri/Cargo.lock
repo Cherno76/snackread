@@ -593,30 +593,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cshow-gui"
-version = "0.5.53"
-dependencies = [
- "base64 0.22.1",
- "dirs 5.0.1",
- "encoding_rs",
- "env_logger",
- "image",
- "log",
- "percent-encoding",
- "regex",
- "roxmltree",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
- "ureq",
- "zhconv",
- "zip",
-]
-
-[[package]]
 name = "cssparser"
 version = "0.36.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3435,6 +3411,30 @@ name = "smallvec"
 version = "1.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
+
+[[package]]
+name = "snack-read"
+version = "0.5.60"
+dependencies = [
+ "base64 0.22.1",
+ "dirs 5.0.1",
+ "encoding_rs",
+ "env_logger",
+ "image",
+ "log",
+ "percent-encoding",
+ "regex",
+ "roxmltree",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "ureq",
+ "zhconv",
+ "zip",
+]
 
 [[package]]
 name = "socket2"

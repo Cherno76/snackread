@@ -1,4 +1,4 @@
-/* cshow-gui 文字 EPUB 阅读器基础样式（解包时注入各章节） */
+/* snack-read 文字 EPUB 阅读器基础样式（解包时注入各章节） */
 html, body { margin: 0; padding: 0; }
 /* 解包时标记的固定页眉/页脚（页码、书名 – 作者等）不显示 */
 [data-cshow-hdr] { display: none !important; }

@@ -1,4 +1,4 @@
-# cshow-gui
+# SnackRead
 
 A local manga / e-book reader for images, PDF and EPUB, built with Tauri 2
 (Rust backend + system WebView). It is the GUI companion of the cshow terminal
@@ -196,10 +196,18 @@ scripts/package.sh
 ```
 
 Release build → assemble `.app` → ad-hoc sign → zip → copy to
-`/Applications/cshow-gui.app`. Version lives in `src-tauri/Cargo.toml` and is
-bumped per round of changes.
-release 编译 → 组装 `.app` → ad-hoc 签名 → zip → 复制到 `/Applications/cshow-gui.app`。
-版本号在 `src-tauri/Cargo.toml`，每轮修改递增。
+`/Applications/SnackRead.app`. The app renames to **SnackRead**, but the
+binary is `snack-read` (crate name). Version lives in `src-tauri/Cargo.toml`
+and is bumped per round of changes.
+release 编译 → 组装 `.app` → ad-hoc 签名 → zip → 复制到
+`/Applications/SnackRead.app`。应用名（显示名）为 **SnackRead**，但可执行文件
+仍为 `snack-read`（crate 名）。版本号在 `src-tauri/Cargo.toml`，每轮修改递增。
+
+> 包标识符 `com.cherno.cshow-gui` 与配置目录 `~/Library/Application Support/cshow-gui`
+> 刻意保持旧值，以确保既有身份/用户数据不变。
+
+> 打包版本取自 `src-tauri/Cargo.toml`；`src-tauri/tauri.conf.json` 的 `version`
+> 应在每次提版时同步（`package.sh` 实际只读 `Cargo.toml`）。
 
 ### Tests / 测试
 

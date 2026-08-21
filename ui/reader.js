@@ -1,4 +1,4 @@
-/* cshow-gui 文字 EPUB 阅读器脚本（解包时注入各章节）
+/* snack-read 文字 EPUB 阅读器脚本（解包时注入各章节）
  * 与父窗口（app.js）通过 postMessage 通信：
  *   iframe -> parent: { cshowH } 滚动高度 / { cshowGeom:{chapter,pages,pageW,gap} } 分页几何 / { cshowReady:{chapter,mode} }
  *   parent -> iframe: { cshow:'reader', type:'set'|'goto'|'measure', cfg?, page? }
@@ -19,6 +19,12 @@
     light: 'rgba(34,37,42,0.18)',
     sepia: 'rgba(75,58,38,0.22)',
     dark:  'rgba(201,205,211,0.18)'
+  };
+  // 朗读句子高亮底色（跟随主题）
+  var TTS_HL = {
+    light: 'rgba(255,204,0,.32)',
+    sepia: 'rgba(240,180,60,.32)',
+    dark:  'rgba(255,200,40,.20)'
   };
 
   var SERIF = 'Georgia, "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "Times New Roman", serif';
@@ -88,6 +94,7 @@
     css += 'html,body{background:' + t.bg + ' !important;color:' + t.fg + ' !important;margin:0 !important;}';
     css += '[data-cshow-hdr]{display:none !important;}'; // 解包标记的固定页眉/页脚
     css += 'body a{color:' + t.link + ' !important;}';
+    css += '.tts-saying{background:' + (TTS_HL[state.theme] || TTS_HL.light) + ';border-radius:3px;}';
     // 字号/行高/字体要直接应用到正文元素（而不只 body）：
     // 很多书的 CSS 给 p/li/blockquote 等设置了显式 font-size/font-family，
     // 元素自身的值会覆盖 body 的继承值，导致切换字号/字体对部分书无效。
@@ -316,6 +323,11 @@
     else if (d.type === 'goto') gotoPage(d.page);
     else if (d.type === 'measure') scheduleMeasure();
     else if (d.type === 'anchor') gotoAnchor(d.anchor);
+    else if (d.type === 'ttsreq') reportTtsText();
+    else if (d.type === 'ttsmark') ttsMark(d.pi);
+    else if (d.type === 'ttsvisible') {
+      parent.postMessage({ cshowTtsVisible: { chapter: chapter, pi: firstVisibleTtsPara() } }, '*');
+    }
     else if (d.type === 'anchorcols') {
       // 上报目录锚点在当前章节内的列号（目录高亮用，一文件多章的书精确选中当前条目）
       if (state.mode !== 'flip') return;
@@ -368,11 +380,86 @@
   document.addEventListener('touchend', function () { touchX = null; });
   document.addEventListener('touchcancel', function () { touchX = null; });
 
+  // ---- 朗读（TTS）：父窗口跨源无法直读 iframe DOM，由本章建立段落索引供其逐句朗读 ----
+  var ttsParas = [];   // [{el, text}]：正文段落（已跳过页眉页脚/纯图段落）
+  var ttsMarkedEl = null;
+
+  function collectTtsParas() {
+    ttsParas = [];
+    var candidates = body.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote, li, td, th, div');
+    var cap = [];
+    for (var i = 0; i < candidates.length; i++) {
+      var el = candidates[i];
+      if (el.closest && (el.closest('[data-cshow-hdr]') || el.closest('nav, aside'))) continue; // 页眉/页脚/页码/导航
+      if (el.querySelector('img, svg, video')) continue;          // 纯图段落
+      // div 只收“叶子”文本容器，避免把整章容器收进来
+      if (el.tagName === 'DIV' &&
+          el.querySelector('p, div, li, td, th, blockquote, h1, h2, h3, h4, h5, h6, img, svg, video')) continue;
+      var text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!text) continue;
+      // 避免重复捕获：li > p、td > p 等嵌套结构只保留最外层有文字的块
+      var dup = false;
+      for (var j = 0; j < cap.length; j++) {
+        if (cap[j].contains(el) || el.contains(cap[j])) { dup = true; break; }
+      }
+      if (dup) continue;
+      cap.push(el);
+      ttsParas.push({ el: el, text: text });
+    }
+    // 结构特殊（整页无上述标签）时兜底：按整页文本读
+    if (ttsParas.length === 0) {
+      var whole = (body.innerText || '').replace(/\s+/g, ' ').trim();
+      if (whole) ttsParas.push({ el: body, text: whole });
+    }
+  }
+
+  function reportTtsText() {
+    collectTtsParas();
+    var texts = [];
+    for (var i = 0; i < ttsParas.length; i++) texts.push(ttsParas[i].text);
+    parent.postMessage({ cshowTtsText: { chapter: chapter, texts: texts } }, '*');
+  }
+
+  // 高亮第 pi 段并跟随（滚动模式滚到可视区；翻页模式上报列号由父窗口翻页）
+  function ttsMark(pi) {
+    if (ttsMarkedEl) ttsMarkedEl.classList.remove('tts-saying');
+    ttsMarkedEl = null;
+    if (ttsParas.length === 0) collectTtsParas();
+    if (pi < 0) return;
+    var p = ttsParas[pi];
+    if (!p) return;
+    p.el.classList.add('tts-saying');
+    ttsMarkedEl = p.el;
+    if (state.mode === 'flip') {
+      if (!wrapBuilt) buildWrap();
+      var wr = wrap.getBoundingClientRect();
+      var r = p.el.getBoundingClientRect();
+      var x = r.left - wr.left;
+      var col = Math.max(0, Math.floor(x / (state.pageW + state.gap)));
+      parent.postMessage({ cshowTtsCol: { chapter: chapter, col: col } }, '*');
+    } else {
+      try { p.el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+      catch (e) { p.el.scrollIntoView(); }
+    }
+  }
+
+  // 首个“进入可视区”的段落下标（朗读从当前页/当前可视位置开始）
+  function firstVisibleTtsPara() {
+    if (ttsParas.length === 0) collectTtsParas();
+    var vh = window.innerHeight || root.clientHeight || 600;
+    for (var i = 0; i < ttsParas.length; i++) {
+      var r = ttsParas[i].el.getBoundingClientRect();
+      if (r.bottom >= 0 && r.top <= vh) return i;
+    }
+    return 0;
+  }
+
   function boot() {
     applyStyle();
     if (state.mode === 'flip') buildWrap();
     scheduleMeasure();
     parent.postMessage({ cshowReady: { chapter: chapter, mode: state.mode } }, '*');
+    reportTtsText();
     setTimeout(scheduleMeasure, 250); // 图片/字体加载后二次校正
     setTimeout(scheduleMeasure, 600);
   }

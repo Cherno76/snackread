@@ -16,7 +16,7 @@ cargo build --release
 echo "== 组装 $APP_NAME.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp target/release/cshow-gui "$APP/Contents/MacOS/cshow-gui"
+cp target/release/snack-read "$APP/Contents/MacOS/snack-read"
 cp icons/icon.icns "$APP/Contents/Resources/icon.icns"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
@@ -27,7 +27,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundleName</key><string>SnackRead</string>
   <key>CFBundleDisplayName</key><string>SnackRead</string>
-  <key>CFBundleExecutable</key><string>cshow-gui</string>
+  <key>CFBundleExecutable</key><string>snack-read</string>
   <key>CFBundleIdentifier</key><string>com.cherno.cshow-gui</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>__VERSION__</string>

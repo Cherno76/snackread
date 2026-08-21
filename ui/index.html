@@ -34,6 +34,7 @@
         <button id="font-family" class="text-ctl" title="切换正文字体">字体</button>
         <button id="font-plus" class="text-ctl" title="增大字号">A+</button>
         <button id="margin-btn" class="text-ctl" title="页边距">边距</button>
+        <button id="tts-btn" class="text-ctl" title="朗读">朗读</button>
       </div>
       <div id="preview"></div>
       <div id="strip"></div>
@@ -87,6 +88,15 @@
     <div id="progress"></div>
   </div>
   <div id="read-progress"><div id="read-progress-fill"></div></div>
+  <div id="tts-bar" hidden>
+    <span id="tts-text"></span>
+    <button id="tts-pause-len" class="tts-ctl" title="句间停顿：短（合并多句）/ 中 / 长（每句单独读）">停顿·中</button>
+    <button id="tts-rate-minus" class="tts-ctl" title="放慢">−</button>
+    <span id="tts-rate">1x</span>
+    <button id="tts-rate-plus" class="tts-ctl" title="加快">＋</button>
+    <button id="tts-pause" class="tts-ctl tts-main" title="暂停">⏸</button>
+    <button id="tts-stop" class="tts-ctl" title="停止">✕</button>
+  </div>
   <div id="lib-dialog" hidden>
     <div id="lib-dialog-box">
       <div id="lib-dialog-head">
@@ -99,6 +109,7 @@
       <div id="lib-browse">
         <button id="lib-up" class="btn">↑ 上级</button>
         <span id="lib-path"></span>
+        <select id="lib-volumes" hidden></select>
       </div>
       <ul id="lib-dirs"></ul>
       <div id="lib-actions">

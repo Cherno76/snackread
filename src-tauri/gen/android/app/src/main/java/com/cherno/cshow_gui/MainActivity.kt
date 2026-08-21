@@ -16,6 +16,7 @@ import android.webkit.WebView
 
 class MainActivity : TauriActivity() {
   private var batteryReceiver: BroadcastReceiver? = null
+  private var ttsBridge: TtsBridge? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -41,6 +42,10 @@ class MainActivity : TauriActivity() {
     super.onWebViewCreate(webView)
     webView.post {
       webView.addJavascriptInterface(StatusBridge(this), "AndroidStatus")
+      // 朗读（TTS）桥：在 WebView 主线程创建 TextToSpeech（JS 接口回调线程没有 Looper）
+      val bridge = TtsBridge(this, webView)
+      ttsBridge = bridge
+      webView.addJavascriptInterface(bridge, "AndroidTts")
       // 电池插拔/电量变化时立即通知前端刷新标题栏状态
       batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -57,6 +62,8 @@ class MainActivity : TauriActivity() {
     super.onDestroy()
     batteryReceiver?.let { runCatching { unregisterReceiver(it) } }
     batteryReceiver = null
+    ttsBridge?.destroy()
+    ttsBridge = null
   }
 
   class StatusBridge(private val activity: MainActivity) {
