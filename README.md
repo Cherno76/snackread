@@ -10,6 +10,19 @@ PDF、EPUB 的丝滑阅读体验，是 cshow 终端阅读器的 GUI 版。
 
 ---
 
+## Screenshots / 截图
+
+| ![电子书书库](screenshots/library-ebooks.png) | ![电子书书库·选中](screenshots/library-ebooks-selected.png) |
+| 电子书书库（网格、标签、评分、阅读统计） | 电子书书库（选中书籍高亮） |
+| ![漫画书库](screenshots/library-manga.png) | ![漫画翻页阅读](screenshots/manga-reader.png) |
+| 漫画书库 | 漫画翻页阅读（双页，条漫卷） |
+| ![文字书双页阅读](screenshots/text-reader.png) | |
+| 文字书双页阅读（羊皮纸主题） | |
+
+书库网格 · 漫画 · 翻页阅读 · 文字书双页阅读：本地优先，阅读全程离线。
+
+---
+
 ## Features / 功能特性
 
 ### Library / 书库
