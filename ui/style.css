@@ -853,9 +853,27 @@ body.reading.ctl-on #toc-panel {
 #tag-bar {
   display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px;
   border-bottom: 1px solid var(--border); background: var(--sidebar);
-  position: relative; overflow-y: auto; /* 固定高度由 JS 设 max-height，超出滚动 */
+  position: relative; overflow: hidden; /* 不滚动，超出三行用展开/收起 */
 }
 #tag-bar[hidden] { display: none; }
+/* 折叠状态底部渐隐，提示还有更多标签 */
+#tag-bar.tag-closed::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+  height: 26px; background: linear-gradient(180deg, transparent, var(--sidebar));
+  pointer-events: none; z-index: 1;
+}
+/* 展开/收起按钮：右下角浮动 */
+#tag-bar .tag-collapse {
+  position: absolute; bottom: 4px; right: 10px; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 22px; padding: 0; border-radius: 999px;
+  border: 1px solid var(--border2); background: var(--btn);
+  cursor: pointer;
+}
+#tag-bar .tag-collapse:hover { background: var(--btn-hover); }
+#tag-bar .tag-collapse svg { transition: transform .18s ease; color: var(--muted); }
+#tag-bar.tag-open .tag-collapse svg { transform: rotate(180deg); }
+#tag-bar .tag-collapse[hidden] { display: none; }
 .tag-filter {
   font-size: 12px; color: var(--muted); background: var(--btn);
   border: 1px solid var(--border2); border-radius: 999px; padding: 2px 10px;

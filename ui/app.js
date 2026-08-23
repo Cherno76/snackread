@@ -197,6 +197,7 @@ let bookMetaMap = {};     // path -> {title, author, rating, tags}
 let allTags = [];         // 当前书库全部标签
 let tagRefCount = new Map(); // 标签 → 被多少本书引用
 let activeTags = new Set(); // 标签筛选选中的标签
+let tagBarExpanded = false;  // 标签栏是否展开（超过三行时展开/收起用）
 let metaDialogBook = null;  // 元数据对话框当前编辑的书
 let metaDialogRating = 0;   // 元数据对话框当前评分（0..5）
 let metaPendingCover = null; // 待保存的自定义封面：{name, data} | 'remove' | null
@@ -4642,6 +4643,9 @@ function waitPageModeReady(ch) {
 
 // 重新拉取当前书库条目（最近阅读排序随 last_read_at 更新）并渲染书页
 async function refreshBookPage() {
+  // 立即清空旧卡片：退出阅读/连读时网格已被 openLibGrid 解除隐藏，
+  // 若保留旧卡片会在读取 list_dir 期间闪现上一屏书库，造成“先列表、后标签栏”。
+  libGridBodyEl.innerHTML = '<div style="padding:40px;color:var(--muted)">加载中…</div>';
   // 从卷页回退到书库：连读等场景退出后 cwd 可能还停在卷目录，
   // 统一先“进入书库目录”再渲染，而不是依赖返回上级目录的状态
   if (!favorites.some(f => f.path === cwd)) {
@@ -4727,10 +4731,12 @@ function rebuildTagBarFrom(entries, minRef) {
 }
 
 function renderTagBar() {
+  tagBarExpanded = false; // 重建时默认回到折叠态
   tagBarEl.innerHTML = '';
   if (allTags.length === 0) {
     tagBarEl.hidden = true;
     tagBarEl.style.maxHeight = '';
+    tagBarEl.classList.remove('tag-more', 'tag-closed', 'tag-open');
     return;
   }
   tagBarEl.hidden = false;
@@ -4757,23 +4763,55 @@ function renderTagBar() {
     });
     tagBarEl.appendChild(chip);
   }
+  // 展开/收起按钮（右下角浮动；> 三行时显示）
+  const more = document.createElement('button');
+  more.type = 'button';
+  more.className = 'tag-collapse';
+  more.hidden = true;
+  more.innerHTML =
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+  more.addEventListener('click', () => {
+    tagBarExpanded = !tagBarExpanded;
+    applyTagCollapse();
+  });
+  tagBarEl.appendChild(more);
   applyTagCollapse();
 }
 
-// 标签筛选栏：固定显示三行，超出部分在栏内滚动查看
+// 标签筛选栏：默认固定三行、不滚动；超过三行显示展开/收起图标
 function applyTagCollapse() {
-  if (tagBarEl.hidden || tagBarEl.children.length === 0) {
+  const chips = Array.from(tagBarEl.querySelectorAll('.tag-filter'));
+  const btn = tagBarEl.querySelector('.tag-collapse');
+  if (tagBarEl.hidden || chips.length === 0) {
     tagBarEl.style.maxHeight = '';
+    tagBarEl.classList.remove('tag-more', 'tag-closed', 'tag-open');
+    if (btn) btn.hidden = true;
     return;
   }
-  const tops = [...new Set(Array.from(tagBarEl.children).map(c => c.offsetTop))].sort((a, b) => a - b);
+  const tops = [...new Set(chips.map(c => c.offsetTop))].sort((a, b) => a - b);
   if (tops.length <= 3) {
     tagBarEl.style.maxHeight = '';
+    tagBarEl.classList.remove('tag-more', 'tag-closed', 'tag-open');
+    if (btn) btn.hidden = true;
+    tagBarExpanded = false;
     return;
   }
-  const chip = tagBarEl.children[0];
-  // 第三行底 + 底部 padding，正好显示三行
-  tagBarEl.style.maxHeight = (tops[2] + chip.offsetHeight + 8) + 'px';
+  const chip = chips[0];
+  tagBarEl.classList.add('tag-more');
+  if (tagBarExpanded) {
+    tagBarEl.classList.add('tag-open');
+    tagBarEl.classList.remove('tag-closed');
+    tagBarEl.style.maxHeight = '';
+  } else {
+    tagBarEl.classList.add('tag-closed');
+    tagBarEl.classList.remove('tag-open');
+    // 第三行底 + 底部 padding，正好显示三行
+    tagBarEl.style.maxHeight = (tops[2] + chip.offsetHeight + 8) + 'px';
+  }
+  if (btn) {
+    btn.hidden = false;
+    btn.title = tagBarExpanded ? '收起' : '展开';
+  }
 }
 window.addEventListener('resize', () => {
   if (!tagBarEl.hidden) applyTagCollapse();
@@ -5184,7 +5222,13 @@ async function renderLibBookPage() {
   libGearEl.hidden = false;
   libStatsEl.hidden = false;
   libViewBtnEl.hidden = false;
+  // 先清空旧卡片并显示加载态：退出阅读时旧列表会被 openLibGrid 先行解除隐藏，
+  // 若不清空会在元数据加载期间闪现上一屏的书列表，造成“先列表、后标签栏”。
+  libGridBodyEl.innerHTML = '<div style="padding:40px;color:var(--muted)">加载中…</div>';
   await loadGridMeta();
+  // 只要书库有标签，就在渲染书列表前恢复标签栏可见（退出阅读/卷页时若处于
+  // 标签筛选状态，loadGridMeta 会跳过重建而保留隐藏，这里强制解除，避免晚出现）
+  if (allTags.length > 0) tagBarEl.hidden = false;
   libGridBodyEl.innerHTML = '';
   libGridBodyEl.classList.toggle('list', libViewMode === 'list');
   if (favorites.length === 0) {
