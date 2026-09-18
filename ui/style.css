@@ -608,6 +608,7 @@ body.theme-dark { --reader-bg: #14171c; --reader-page: #14171c; }
   display: flex; align-items: center; gap: 8px;
   padding: 6px 14px;
 }
+#lib-browse[hidden], #lib-actions[hidden] { display: none; }
 #lib-path {
   font-size: 12px; color: var(--muted); overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap;

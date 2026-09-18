@@ -2120,7 +2120,16 @@ const libPickStateEl = document.getElementById('lib-pick-state');
 // iOS 沙盒：容器外的目录（iCloud Drive / 其他 App 的文件夹 / 外接存储）只能通过
 // 系统文件夹选择器授权后访问，所以这个入口只在 iOS 上出现。
 const IS_IOS_APP = /iPhone|iPad|iPod/.test(navigator.userAgent);
-if (IS_IOS_APP) libPickRowEl.hidden = false;
+if (IS_IOS_APP) {
+  libPickRowEl.hidden = false;
+  // iPhone 上不再用应用内浏览：隐藏「↑ 上级」+ 路径、目录列表和「添加此文件夹」，
+  // 直接点按钮调系统选择器，选完就把该目录加进书库。
+  document.getElementById('lib-browse').hidden = true;
+  libDirsEl.hidden = true;
+  document.getElementById('lib-actions').hidden = true;
+  document.getElementById('lib-add-section').textContent = '添加书库';
+  libPickEl.textContent = '📂 添加书库…';
+}
 
 libGearEl.appendChild(gearIconEl());
 
@@ -2343,8 +2352,23 @@ libPickEl.addEventListener('click', async (e) => {
   try {
     const picked = await invoke('pick_folder');
     libPickStateEl.textContent = '';
-    libBrowsePath = picked;
-    renderLibDirs();
+    if (IS_IOS_APP) {
+      // iPhone：选完直接加入书库，不再走「浏览 → 添加此文件夹」
+      if (favorites.some(f => f.path === picked)) {
+        // toggle_favorite 是「切换」，已经在书库里的话再调用会把它移出去
+        libPickStateEl.textContent = '这个目录已经在书库里了';
+      } else {
+        await addLibraryPath(picked);
+        libPickStateEl.textContent = '已加入书库';
+      }
+      const msg = libPickStateEl.textContent;
+      setTimeout(() => {
+        if (libPickStateEl.textContent === msg) libPickStateEl.textContent = '';
+      }, 2000);
+    } else {
+      libBrowsePath = picked;
+      renderLibDirs();
+    }
   } catch (err) {
     const msg = typeof err === 'string' && err ? err : '已取消';
     libPickStateEl.textContent = msg;
@@ -2588,18 +2612,23 @@ libUpEl.addEventListener('click', () => {
   }
 });
 libAddEl.addEventListener('click', async () => {
-  await invoke('toggle_favorite', { path: libBrowsePath }).catch(() => {});
+  await addLibraryPath(libBrowsePath);
+});
+
+/// 把一个目录加入书库（设为当前书库并刷新界面）
+async function addLibraryPath(path) {
+  await invoke('toggle_favorite', { path }).catch(() => {});
   await refreshFavorites();
   renderLibList();
   renderLibDirs();
-  if (favorites.some(f => f.path === libBrowsePath)) {
-    await loadDir(libBrowsePath); // 新书库设为当前
+  if (favorites.some(f => f.path === path)) {
+    await loadDir(path); // 新书库设为当前
   }
   if (libGridMode && !libGridBook) {
     libGridLibEntries = entries.slice();
     renderLibBookPage();
   }
-});
+}
 
 async function generateVolumeThumb(v, holder) {
   let saved = null;
