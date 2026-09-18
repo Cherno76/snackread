@@ -2516,6 +2516,36 @@ fn migrate_ios_single_page(conn: &rusqlite::Connection) {
 #[cfg(not(target_os = "ios"))]
 fn migrate_ios_single_page(_conn: &rusqlite::Connection) {}
 
+/// 一次性迁移：iPhone 上正文字号默认从 16px 提到 19px。老库里存着的是旧默认值 16
+/// （全局默认 + 打开书时写进 settings 的单书值都是），只改代码默认值不会生效，
+/// 所以这里把等于 16 的记录一并改成 19（用户之后仍可自己调）。
+#[cfg(target_os = "ios")]
+fn migrate_ios_reader_font(conn: &rusqlite::Connection) {
+    const KEY: &str = "ios_font_default_19";
+    if matches!(db::get_app_state(conn, KEY), Ok(Some(_))) {
+        return;
+    }
+    let mut changed = 0usize;
+    if let Ok(Some(v)) = db::get_app_state(conn, "reader_font_size") {
+        if v.trim() == "16" && db::set_app_state(conn, "reader_font_size", "19").is_ok() {
+            changed += 1;
+        }
+    }
+    match conn.execute("UPDATE settings SET font_size = 19 WHERE font_size = 16", []) {
+        Ok(n) => {
+            changed += n;
+            let _ = db::set_app_state(conn, KEY, "1");
+        }
+        Err(e) => log::warn!("字号迁移失败（下次启动重试）: {e}"),
+    }
+    if changed > 0 {
+        log::info!("已把 {changed} 处 16px 字号改为 19px");
+    }
+}
+
+#[cfg(not(target_os = "ios"))]
+fn migrate_ios_reader_font(_conn: &rusqlite::Connection) {}
+
 /// 弹出系统「选择文件夹」选择器，返回被授权目录的绝对路径；用户取消返回 Err。
 /// iOS 以外平台走应用内浏览，不需要这个入口。
 #[cfg(target_os = "ios")]
@@ -4774,7 +4804,8 @@ fn get_reader_font(state: tauri::State<'_, db::Db>) -> serde_json::Value {
         .ok()
         .flatten()
         .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(16);
+        // iPhone 屏幕小，正文默认给 19px（前端 DEFAULT_READER_FONT 与此保持一致）
+        .unwrap_or(if cfg!(target_os = "ios") { 19 } else { 16 });
     let family = db::get_app_state(&conn, "reader_font_family")
         .ok()
         .flatten()
@@ -6088,6 +6119,8 @@ pub fn run() {
     repair_container_paths(&conn);
     // iOS：文字书默认单页（老书存着的「双页」一并改掉，只做一次）
     migrate_ios_single_page(&conn);
+    // iOS：正文字号默认 16 → 19（老记录里等于 16 的也一起改，只做一次）
+    migrate_ios_reader_font(&conn);
     tauri::Builder::default()
         .manage(BookState(Mutex::new(None)))
         .manage(db::Db(Mutex::new(conn)))

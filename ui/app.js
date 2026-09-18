@@ -11,6 +11,11 @@ const BOOK_ORIGIN = /Android/i.test(navigator.userAgent)
 // 触摸设备（手机）：单击卡片直接进入，不做“先选中再进入”的两步操作
 const IS_TOUCH = navigator.maxTouchPoints > 0 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 const IS_DESKTOP = !IS_TOUCH; // 桌面：悬停/键盘交互；触屏：直接点按
+// iOS（含 iPad）/ iPhone（不含 iPad）
+const IS_IOS_APP = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const IS_IPHONE = /iPhone|iPod/.test(navigator.userAgent);
+// 正文字号默认值：iPhone 屏幕小、拿得近，16px 偏小，给 19px；其它平台保持 16px
+const DEFAULT_READER_FONT = IS_IPHONE ? 19 : 16;
 
 const sidebarEl = document.getElementById('sidebar');
 const libTabsEl = document.getElementById('lib-tabs');
@@ -190,7 +195,7 @@ let pendingAnchor = null;        // 目录跳转的待定位锚点 {chapter, anc
 let pendingAnchorCol = null;     // reader 已回报锚点列号，但目标章几何尚未上报时的待定位列
 let textPendingAnimate = false;  // 跨章翻页：待定位完成后是否用滑动过渡（用户翻页=true）
 let pendingScrollRestore = null; // 翻页→滚动时待恢复的滚动位置 {chapter, frac}
-let readerFontSize = 16;         // 正文字号（px）
+let readerFontSize = DEFAULT_READER_FONT; // 正文字号（px）
 let readerFontFamily = 'system'; // system | serif | sans
 let readerMargins = { left: 10, right: 10, top: 28, bottom: 38, gap: 30 }; // 文字书全局页边距
 let readTimes = {};       // 各书籍累计阅读时长（秒）内存缓存：{ bookPath: seconds }（以 .cshow 为准）
@@ -224,9 +229,9 @@ async function migrateLegacyStorage() {
   if (theme) {
     try { await invoke('set_reader_theme', { theme }); } catch { /* 忽略 */ }
   }
-  // 正文字号/字体
-  let fs = 16;
-  try { fs = parseInt(localStorage.getItem('cshow.readerFontSize') || '16', 10) || 16; } catch { /* 忽略 */ }
+  // 正文字号/字体（没有历史值时用平台默认，别写死 16 覆盖掉 iPhone 的默认）
+  let fs = DEFAULT_READER_FONT;
+  try { fs = parseInt(localStorage.getItem('cshow.readerFontSize') || '', 10) || DEFAULT_READER_FONT; } catch { /* 忽略 */ }
   let ff = 'system';
   try { ff = localStorage.getItem('cshow.readerFontFamily') || 'system'; } catch { /* 忽略 */ }
   try { await invoke('set_reader_font', { size: fs, family: ff }); } catch { /* 忽略 */ }
@@ -585,6 +590,9 @@ async function loadReaderFont() {
   } catch { /* 忽略 */ }
 }
 function persistReaderFont() {
+  // 字号/字体总是同时更新「新书默认」，否则在书里调大只影响这一本，
+  // 下次打开新书又回到很小的默认值
+  invoke('set_reader_font', { size: readerFontSize, family: readerFontFamily }).catch(() => {});
   if (flipBookDir) {
     // 单书记忆：写入本书设置（与阅读模式同一 scope）
     invoke('write_book_settings', {
@@ -596,9 +604,6 @@ function persistReaderFont() {
       fontSize: readerFontSize,
       fontFamily: readerFontFamily,
     }).catch(() => {});
-  } else {
-    // 未进入阅读（如启动迁移）：写全局默认
-    invoke('set_reader_font', { size: readerFontSize, family: readerFontFamily }).catch(() => {});
   }
 }
 function updateFontButtons() {
@@ -2119,9 +2124,6 @@ const libPickEl = document.getElementById('lib-pick');
 const libPickStateEl = document.getElementById('lib-pick-state');
 // iOS 沙盒：容器外的目录（iCloud Drive / 其他 App 的文件夹 / 外接存储）只能通过
 // 系统文件夹选择器授权后访问，所以这个入口只在 iOS 上出现。
-const IS_IOS_APP = /iPhone|iPad|iPod/.test(navigator.userAgent);
-// iPhone（不含 iPad）屏幕窄，文字书分两栏没法看，所以默认单页；iPad/桌面保持双页默认
-const IS_IPHONE = /iPhone|iPod/.test(navigator.userAgent);
 // iPhone：顶部的 logo/时间/信号那一行（#titlebar）是多余的（系统状态栏已经有了），
 // 直接不显示，并把 --titlebar-h 归零让出那 34px。
 if (IS_IPHONE) document.body.classList.add('no-titlebar');
