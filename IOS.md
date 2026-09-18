@@ -138,20 +138,31 @@ iOS 的 `Data/Application/<UUID>` 这个 UUID **不是长期稳定的**：每次
 （证书本身是一年，卡的是 profile）。`scripts/ios-refresh.sh` 由
 `com.cherno.snackread-ios-refresh`（每小时一次）调用，在到期前 24 小时开始尝试：
 
-1. 实测：**Xcode 会复用仍在有效期内的 profile** —— 同一天连着构建十几次，profile 只有
-   一份、过期时间始终没变。所以脚本会先删掉 `~/Library/Developer/Xcode/UserData/
-   Provisioning Profiles/*.mobileprovision`（有备份，构建失败会放回），逼 Xcode 去 Apple
-   那边重新签发。
-2. 重新构建 + `devicectl install` 装回手机（覆盖安装，数据保留）。
-3. 读新 profile 的到期时间：真的往后延了就推送"已续期"，没变则推送说明"Apple 复用了
-   同一个 profile"。
+1. 把 `~/Library/Developer/Xcode/UserData/Provisioning Profiles/*.mobileprovision`
+   删掉（有备份，失败会放回）。**不删它 Xcode 会直接复用旧的 7 天**——实测同一天连着
+   构建十几次，profile 始终只有一份、过期时间没变过。
+2. **关键一步**：用下面这条命令让 Xcode 去 Apple 注册设备并签发新 profile
 
-> 前置条件：手机在同一个 Wi-Fi 且处于 Xcode/Apple 能识别的可用状态（锁屏或离线会失败，
-> 下一个小时自动重试）；Mac 已登录 Xcode 的 Apple ID；登录钥匙串解锁（codesign 要私钥）。
-> 注意 `devicectl` 能连通 ≠ Xcode/Apple 愿意签发 profile：本机实测过
-> "Your team has no devices from which to generate a provisioning profile"。
-> 所以这套是**尽力而为**：最坏情况是过期后一小时内补齐，这一小时内 App 打不开。
-> 想要真正无断档只有 Apple Developer Program（$99/年，profile 一年有效）。
+   ```sh
+   cd src-tauri/gen/apple
+   xcodebuild -allowProvisioningUpdates -allowProvisioningDeviceRegistration \
+     -scheme snack-read_iOS -workspace snack-read.xcodeproj/project.xcworkspace/ \
+     -sdk iphoneos -configuration release -destination "id=<手机 UDID>" build
+   ```
+
+   必须带 `-destination id=<手机 UDID>`：tauri 自己构建时按 "Any iOS Device" 走，
+   Apple 会回 *"Your team has no devices from which to generate a provisioning
+   profile"*（免费 team 没后台权限，不能手动加设备，只能靠 Xcode 注册）。指定设备后
+   就正常了。这条命令必然在 tauri 的 Rust 脚本阶段失败（缺 CLI 的 IPC），所以忽略
+   退出码，只看有没有新 profile 落进缓存。
+3. 再跑正常的 `cargo tauri ios build`（会复用刚签发的 profile）+ `devicectl install`
+   装回手机（覆盖安装，数据保留）。
+4. 读新 profile 的到期时间 → 推送"已续期，新到期 X"。**实测通过**：每次续期都是
+   "此刻 + 7 天"，所以到期前跑一次就能一直续上、不会断档。
+
+> 前置条件：手机解锁并连着 Mac（USB 或同一 Wi-Fi，`devicectl` 能连通即可）；Mac 已登录
+> Xcode 的 Apple ID（会话过期会失败，这是唯一需要人工介入的情况）；登录钥匙串解锁
+> （codesign 要私钥）。失败时会推送到手机提醒，一小时后再自动重试。
 
 手动操作：`scripts/ios-refresh.sh --status` 看到期时间；`--force` 强制跑一次（验证续期用）。
 

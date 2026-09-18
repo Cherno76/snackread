@@ -124,6 +124,24 @@ restore_profile_backup() {
   fi
 }
 
+# 让 Xcode 去 Apple 那边注册设备 / 签发新 profile。
+# 实测：不指定 destination（tauri 默认按 "Any iOS Device" 构建）时 Apple 会回
+# "Your team has no devices from which to generate a provisioning profile"；
+# 必须 -destination id=<手机 UDID> 再加 -allowProvisioningDeviceRegistration 才会签发。
+# 这一步必然在 tauri 的 Rust 脚本阶段失败（缺 CLI 的 IPC），所以忽略退出码，
+# 只看有没有新 profile 落进缓存。
+( cd "$ROOT/src-tauri/gen/apple" && xcodebuild -allowProvisioningUpdates \
+    -allowProvisioningDeviceRegistration -scheme snack-read_iOS \
+    -workspace snack-read.xcodeproj/project.xcworkspace/ -sdk iphoneos \
+    -configuration release -destination "id=$UDID" build ) >>"$LOG" 2>&1
+
+if ! compgen -G "$XCODE_PROFILES/*.mobileprovision" >/dev/null; then
+  restore_profile_backup
+  log "签发新 profile 失败（Apple 没给）"
+  notify "SnackRead iPhone 版续期失败：Apple 没能签发新的描述文件。请确认手机解锁并连着 Mac（USB 或同一 Wi-Fi）、Xcode 里 Apple ID 会话有效。一小时后再试。"
+  exit 1
+fi
+
 if ! ( cd "$ROOT/src-tauri" && cargo tauri ios build --target aarch64 ) >>"$LOG" 2>&1; then
   restore_profile_backup
   log "构建失败（已把原 profile 放回缓存）"
