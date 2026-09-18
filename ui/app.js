@@ -3154,8 +3154,14 @@ async function enterEpubStrip(savedPage, fresh) {
     pendingScrollRestore = p.within > 0 ? { chapter: target, frac: p.within } : null;
   } else {
     let page;
-    if (fresh) {
-      // 连读进入下一卷：忽略书目录的浏览位置（pendingEpubPage 可能还是上一卷的页码），从第一页开始
+    // 这本书有没有任何阅读记录（分卷表里的 page/progress）
+    const hasSaved = !!(pendingVol
+      && (typeof pendingVol.page === 'number' || typeof pendingVol.progress === 'number'));
+    if (fresh || (typeof savedPage !== 'number' && !hasSaved)) {
+      // 新书从第一页开始。
+      // 以前这里会退回 pendingEpubPage —— 那是「上次在这个目录浏览到的那一页」，
+      // 与当前这本书无关，结果新书一打开就落在第二页/第二章。
+      // fresh：连读进入下一卷，同样忽略上一卷的浏览位置。
       page = 0;
     } else {
       page = typeof savedPage === 'number' ? savedPage : pendingEpubPage;
