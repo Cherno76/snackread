@@ -81,6 +81,10 @@ body {
   pointer-events: none;
   transition: opacity .2s var(--ease);
 }
+/* iPhone：不要这条 logo/时间/信号行（系统状态栏已经显示了），并把
+   --titlebar-h 归零，让下面按它留出的 34px 一起收掉 */
+body.no-titlebar #titlebar { display: none; }
+body.no-titlebar { --titlebar-h: 0px; }
 #titlebar-text {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   max-width: 62%;

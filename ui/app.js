@@ -2122,6 +2122,9 @@ const libPickStateEl = document.getElementById('lib-pick-state');
 const IS_IOS_APP = /iPhone|iPad|iPod/.test(navigator.userAgent);
 // iPhone（不含 iPad）屏幕窄，文字书分两栏没法看，所以默认单页；iPad/桌面保持双页默认
 const IS_IPHONE = /iPhone|iPod/.test(navigator.userAgent);
+// iPhone：顶部的 logo/时间/信号那一行（#titlebar）是多余的（系统状态栏已经有了），
+// 直接不显示，并把 --titlebar-h 归零让出那 34px。
+if (IS_IPHONE) document.body.classList.add('no-titlebar');
 if (IS_IOS_APP) {
   libPickRowEl.hidden = false;
   // iPhone 上不再用应用内浏览：隐藏「↑ 上级」+ 路径、目录列表和「添加此文件夹」，
