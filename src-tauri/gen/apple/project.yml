@@ -1,0 +1,118 @@
+name: snack-read
+options:
+  bundleIdPrefix: com.cherno.cshow-gui
+  deploymentTarget:
+    iOS: 15.0
+fileGroups: [../../src]
+configs:
+  debug: debug
+  release: release
+settingGroups:
+  app:
+    base:
+      PRODUCT_NAME: SnackRead
+      PRODUCT_BUNDLE_IDENTIFIER: com.cherno.cshow-gui
+targetTemplates:
+  app:
+    type: application
+    sources:
+      - path: Sources
+    scheme:
+      environmentVariables:
+        RUST_BACKTRACE: full
+        RUST_LOG: info
+    settings:
+      groups: [app]
+targets:
+  snack-read_iOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Assets.xcassets
+      - path: Externals
+      - path: snack-read_iOS
+      - path: assets
+        buildPhase: resources
+        type: folder
+      - path: LaunchScreen.storyboard
+    info:
+      path: snack-read_iOS/Info.plist
+      properties:
+        LSRequiresIPhoneOS: true
+        UILaunchStoryboardName: LaunchScreen
+        # iOS 26/27 SDK 强制要求：不采用 UIScene 生命周期的 App 会在启动时被 UIKit
+        # 直接终止（EXC_BREAKPOINT / _UIApplicationEvaluateRuntimeIssue
+        # ForNoSceneLifecycleAdoption: "UIScene life cycle is required for apps built
+        # with this SDK"）。
+        # SupportsMultipleScenes 必须为 true，两个原因：
+        #   1. tao 0.35.3 只在它为 true 时才注册
+        #      application:configurationForConnectingSceneSession:options:
+        #      （vendor/tao 已按上游 a3ff3f03 改成无条件注册，但见第 2 点）；
+        #   2. 更重要的是 tao 的状态机：did_finish_launching 在它为 true 时**不**调用
+        #      on_app_ready()，把「app ready」推迟到首个 scene connect。若为 false，
+        #      on_app_ready() 会先跑一次，随后 connect_scene 又跑一次，
+        #      第二次命中 `bug!("unexpected state")` 直接 abort。
+        # iPhone 本身只支持单场景，所以 true 不会真的开出多窗口。
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        UIRequiredDeviceCapabilities: [arm64, metal]
+        # iOS 文件导入：把书丢进「文件」App / Finder 的 SnackRead 文件夹即可被扫描
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        # 「打开方式 / 分享为」支持的书格式
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: SnackRead Book
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - org.idpf.epub-container
+              - com.adobe.pdf
+              - public.plain-text
+              - public.zip-archive
+              - public.data
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        CFBundleShortVersionString: 0.5.73
+        CFBundleVersion: "0.5.73"
+    entitlements:
+      path: snack-read_iOS/snack-read_iOS.entitlements
+    scheme:
+      environmentVariables:
+        RUST_BACKTRACE: full
+        RUST_LOG: info
+    settings:
+      base:
+        ENABLE_BITCODE: false
+        ARCHS: [arm64]
+        VALID_ARCHS: arm64 
+        LIBRARY_SEARCH_PATHS[arch=x86_64]: $(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)
+        LIBRARY_SEARCH_PATHS[arch=arm64]: $(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)
+        ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: true
+        EXCLUDED_ARCHS[sdk=iphoneos*]: x86_64
+        DEVELOPMENT_TEAM: 8AX6Q9V88D
+        CODE_SIGN_STYLE: Automatic
+      groups: [app]
+    dependencies:
+      - framework: libapp.a
+        embed: false
+      - sdk: CoreGraphics.framework
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: QuartzCore.framework
+      - sdk: Security.framework
+      - sdk: UIKit.framework
+      - sdk: WebKit.framework
+    preBuildScripts:
+      - script: cargo tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths "${FRAMEWORK_SEARCH_PATHS:?}" --header-search-paths "${HEADER_SEARCH_PATHS:?}" --gcc-preprocessor-definitions "${GCC_PREPROCESSOR_DEFINITIONS:-}" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}
+        name: Build Rust Code
+        basedOnDependencyAnalysis: false
+        outputFiles:
+          - $(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a
+          - $(SRCROOT)/Externals/arm64/${CONFIGURATION}/libapp.a

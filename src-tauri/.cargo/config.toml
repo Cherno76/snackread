@@ -1,0 +1,9 @@
+# 本机临时配置：让 iOS 交叉编译能定位 clang_rt.ios / Swift 运行时库。
+# 根源：tauri 的 swift-rs 用硬编码的 `/Applications/Xcode.app/...` 兜底链接路径，
+# 早先本机 Xcode 装在 ~/Downloads/Xcode-beta.app，兜底路径不存在，才需要手动补 `-L`。
+# 2026-09-18：Xcode 27 已装到官方路径 /Applications/Xcode.app，这里同步指向它。
+[target.aarch64-apple-ios]
+rustflags = [
+  "-C", "link-arg=-L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/lib/darwin",
+  "-C", "link-arg=-L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos",
+]

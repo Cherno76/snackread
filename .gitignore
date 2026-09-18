@@ -6,3 +6,6 @@ output/
 tmp/
 # 安卓交叉编译生成的 JNI 库（构建时重新生成）
 src-tauri/gen/android/app/src/main/jniLibs/
+
+# 各端打包产物（85MB/个，按需重新生成；文件名 SnackRead-<版本>.apk）
+*.apk
