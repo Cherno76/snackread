@@ -102,33 +102,39 @@ body {
 #bar-network { display: flex; align-items: center; gap: 3px; min-width: 18px; justify-content: center; }
 #bar-wifi { color: var(--accent); display: block; }
 #bar-wifi[hidden], #bar-cell[hidden] { display: none; }
-/* 电池图标：外框 + 内部电量条 + 内部百分比 */
+/* 电池图标：绿色玻璃质感外框 + 浅薄荷绿内部 + 中央黑色闪电（充电时显示）
+   造型参考：绿色描边、内圈高光、浅色内部、黑色闪电、右侧绿色凸头 */
 .bat {
   position: relative; width: 23px; height: 14px;
-  border: 1.5px solid var(--muted2); border-radius: 4.5px;
+  border: 1.5px solid #57bb66; border-radius: 4.5px;
+  background: #daf4e1; /* 内部浅薄荷绿 */
+  box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.5), 0 0 3px rgba(72,178,95,.28);
   display: flex; align-items: center; justify-content: center;
 }
 .bat::after {
-  content: ''; position: absolute; right: -4.5px; top: 50%;
-  width: 2.5px; height: 6px; background: var(--muted2); border-radius: 1.5px;
+  content: ''; position: absolute; right: -4px; top: 50%;
+  width: 3px; height: 7px; background: #5dbb6b; border-radius: 0 2px 2px 0;
   transform: translateY(-50%);
 }
 .bat-fill {
   position: absolute; left: 1.5px; top: 1.5px; bottom: 1.5px;
-  background: #4caf50; border-radius: 2.5px; z-index: 0;
+  background: #4caf50;
+  border-radius: 1.5px; z-index: 0;
 }
 .bat.low .bat-fill { background: var(--red); }
 .bat-bolt {
-  display: none; position: absolute; z-index: 0;
-  font-size: 8px; line-height: 1; left: 50%; top: 50%;
+  display: none; position: absolute; z-index: 2;
+  left: 50%; top: 50%; width: 11px; height: 15px;
   transform: translate(-50%, -50%);
-  color: #fff; text-shadow: 0 0 1.5px rgba(0,0,0,.7);
 }
+.bat-bolt svg { display: block; width: 100%; height: 100%; }
+.bat-bolt path { fill: #0c120d; stroke: #eafcee; stroke-width: 0.5; stroke-linejoin: round; }
 .bat.charging .bat-bolt { display: block; }
 .bat.charging .bat-pct { display: none; }
 .bat-pct {
   position: relative; z-index: 1;
   font-size: 7px; font-weight: 700; line-height: 1;
+  color: #1c2b21; /* 内部为浅薄荷绿背景，文字固定深色，避免暗色主题下 --item 浅色看不清 */
 }
 #bar-battery[hidden] { display: none; }
 /* 阅读时标题栏跟随控件显隐；底部状态栏（应用名/版本/统计）阅读时始终隐藏，
@@ -137,18 +143,24 @@ body.reading #titlebar,
 body.reading #statusbar {
   opacity: 0; pointer-events: none;
 }
-body.reading.ctl-on #titlebar {
-  opacity: 1;
-}
-/* 控件呼出时标题栏占据顶部，阅读控件下移避开 */
+/* 阅读模式顶部只保留一行：控件直接贴到安全区下方（刘海之下），不再给标题栏让位。
+   书名/章节在底部信息条里已经有了；标题栏若同时显示会占据这一行，控件就只好下移，
+   正好压住正文第一行，而且时间栏还会和右侧的 ◑ / 单页·双页 重叠。 */
 body.reading.ctl-on #mode-tab,
 body.reading.ctl-on #page-mode,
 body.reading.ctl-on #theme-btn,
 body.reading.ctl-on #reader-back {
-  top: calc(10px + var(--safe-top) + var(--titlebar-h));
+  top: calc(6px + var(--safe-top));
 }
 body.reading.ctl-on #toc-panel {
-  padding-top: calc(var(--safe-top) + var(--titlebar-h));
+  padding-top: var(--safe-top);
+}
+/* 阅读模式：安全区（刘海/小白条那两条）和 App 自己的标题栏都用阅读背景色，
+   和页面连成一片，避免屏幕上下一块灰底/异色。 */
+body.reading { background: var(--reader-bg, #ffffff); }
+body.reading #titlebar {
+  background: var(--reader-bg, #ffffff);
+  border-bottom-color: transparent;
 }
 #app { display: flex; }
 #sidebar {
@@ -250,6 +262,11 @@ body.reading.ctl-on #toc-panel {
 #strip { height: 100%; overflow-y: auto; display: none; background: var(--reader-bg); }
 #strip.theme-sepia { --reader-bg: #f4ecd8; --reader-page: #f4ecd8; }
 #strip.theme-dark { --reader-bg: #14171c; --reader-page: #14171c; }
+/* 阅读主题同步挂到 body 上：阅读模式下刘海/小白条所在的安全区、以及 App 自己的
+   标题栏都要用阅读背景色，不然会露出 --sidebar/--bg 的底色，屏幕上下一看就和
+   页面不是一块颜色。 */
+body.theme-sepia { --reader-bg: #f4ecd8; --reader-page: #f4ecd8; }
+body.theme-dark { --reader-bg: #14171c; --reader-page: #14171c; }
 /* 一行一张图；content-visibility 让滚出屏幕的图不参与渲染，长条漫也不卡 */
 #strip .page {
   width: 100%;
@@ -342,11 +359,17 @@ body.reading.ctl-on #toc-panel {
 }
 #grid-stats[hidden] { display: none; }
 #mode-tab {
-  position: absolute; top: 10px; left: 56px; z-index: 7; /* 右侧留出独立返回按钮 */
+  /* 与 #page-mode / #theme-btn / #reader-back 保持同一坐标空间。
+     原来用 position:absolute，基准是 #pane —— 而 #pane 已经被 body 的
+     padding-top: var(--safe-top) 推下去一次，于是 top 里的 safe-top 被算了两遍，
+     在 iPhone 上正好比旁边那三个控件低一个刘海高度。 */
+  position: fixed; top: calc(10px + var(--safe-top)); left: 56px; z-index: 7; /* 右侧留出独立返回按钮 */
   display: flex; border: 1px solid var(--glass-border); border-radius: var(--radius-l); overflow: hidden;
   background: var(--glass);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-  transform: translateY(calc(-100% - 20px));
+  /* 收起位置要多减一个 safe-top：#top 本身就在安全区之下，只移 -100%-20px
+     的话元素会停在刘海那一条里，看起来没有完全退出屏幕。 */
+  transform: translateY(calc(-100% - 20px - var(--safe-top)));
   transition: transform .25s ease, opacity .25s var(--ease);
   pointer-events: none;
 }
@@ -355,7 +378,7 @@ body.reading.ctl-on #toc-panel {
   display: flex; border: 1px solid var(--glass-border); border-radius: var(--radius-l); overflow: hidden;
   background: var(--glass);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-  transform: translateY(calc(-100% - 20px));
+  transform: translateY(calc(-100% - 20px - var(--safe-top)));
   transition: transform .25s ease, opacity .25s var(--ease);
   pointer-events: none;
 }
@@ -436,7 +459,7 @@ body.reading.ctl-on #toc-panel {
   background: var(--glass);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   color: var(--muted); cursor: pointer; padding: 6px 9px;
-  transform: translateY(calc(-100% - 20px));
+  transform: translateY(calc(-100% - 20px - var(--safe-top)));
   transition: transform .25s ease, opacity .25s var(--ease);
   pointer-events: none;
 }
@@ -594,6 +617,19 @@ body.reading.ctl-on #toc-panel {
   padding: 8px 14px 12px;
 }
 #lib-state { font-size: 12px; color: var(--muted); }
+/* iOS：系统文件夹选择器入口（沙箱外目录必须由系统选择器授权） */
+#lib-pick-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px 12px;
+}
+#lib-pick-row[hidden] { display: none; }
+#lib-pick-state { font-size: 12px; color: var(--muted); }
+/* iOS：数据目录（放到「我的 iPhone」下，重装不丢） */
+#lib-workdir-wrap[hidden] { display: none; }
+#lib-workdir { padding: 0 14px 12px; font-size: 12px; color: var(--muted); }
+#lib-workdir-path { word-break: break-all; line-height: 1.55; margin-bottom: 8px; }
+#lib-workdir-actions { display: flex; align-items: center; gap: 10px; }
+#lib-workdir-state { font-size: 12px; color: var(--muted); min-width: 0; word-break: break-all; }
 /* 图标视图：侧栏扩展为全窗口，列表区换成缩略图网格 */
 #sidebar.expanded {
   position: fixed; inset: 0; width: 100%; max-width: 100%; z-index: 14;
@@ -637,10 +673,13 @@ body.reading.ctl-on #toc-panel {
   padding: 10px 10px 64px;
 }
 #list-grid.list .lib-card {
-  width: auto; min-height: 120px; height: auto; display: flex; align-items: stretch;
+  width: auto; min-height: 120px; height: auto; display: flex; flex-direction: column;
   background: var(--dialog); border: 1px solid var(--border);
-  border-radius: var(--radius-m); padding: 8px; gap: 12px;
+  border-radius: var(--radius-m); padding: 8px;
   box-shadow: var(--shadow-1);
+}
+#list-grid.list .lib-card .card-head {
+  display: flex; align-items: stretch; gap: 12px; position: relative; min-width: 0;
 }
 #list-grid.list .lib-card .thumb-wrap {
   width: 77px; height: 104px; flex-shrink: 0; position: relative;
@@ -682,6 +721,20 @@ body.reading.ctl-on #toc-panel {
   background: var(--pill); border-radius: 4px; padding: 3px;
 }
 #list-grid.list .lib-card .prog { display: none; }
+/* 列表视图：右下角“详情”按钮 + 备注折叠面板（替代 hover 提示，触屏也能点开） */
+#list-grid.list .lib-card.has-note .card-meta { padding-right: 62px; }
+#list-grid.list .lib-card .card-detail-toggle {
+  position: absolute; right: 2px; bottom: 5px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 3px 9px; font-size: 11px; line-height: 1; color: var(--muted);
+  background: var(--btn); border: 1px solid var(--border2); border-radius: 999px;
+  cursor: pointer; transition: background .15s var(--ease);
+}
+#list-grid.list .lib-card .card-detail-toggle:hover { background: var(--btn-hover); }
+#list-grid.list .lib-card .card-detail-toggle svg {
+  width: 12px; height: 12px; transition: transform .2s var(--ease);
+}
+#list-grid.list .lib-card .card-detail-toggle.open svg { transform: rotate(180deg); }
 /* 桌面端（可悬停设备）：恢复悬停显隐与选中焦点框；触屏设备不受影响 */
 @media (hover: hover) and (pointer: fine) {
   .lib-card .eye-toggle,
@@ -1052,31 +1105,62 @@ body.reading.ctl-on #toc-panel {
   word-break: break-word;
 }
 #hover-tip[hidden] { display: none; }
-#hover-tip p { margin: 0 0 6px; }
-#hover-tip p:last-child { margin-bottom: 0; }
-#hover-tip h1, #hover-tip h2, #hover-tip h3, #hover-tip h4, #hover-tip h5, #hover-tip h6 {
+:is(#hover-tip, .note-md) p { margin: 0 0 6px; }
+:is(#hover-tip, .note-md) p:last-child { margin-bottom: 0; }
+:is(#hover-tip, .note-md) h1, :is(#hover-tip, .note-md) h2, :is(#hover-tip, .note-md) h3,
+:is(#hover-tip, .note-md) h4, :is(#hover-tip, .note-md) h5, :is(#hover-tip, .note-md) h6 {
   margin: 0 0 6px; font-weight: 600; line-height: 1.3;
 }
-#hover-tip h1 { font-size: 15px; } #hover-tip h2 { font-size: 14px; }
-#hover-tip h3 { font-size: 13px; } #hover-tip h4, #hover-tip h5, #hover-tip h6 { font-size: 12px; }
-#hover-tip ul, #hover-tip ol { margin: 0 0 6px; padding-left: 18px; }
-#hover-tip li { margin: 2px 0; }
-#hover-tip code {
+:is(#hover-tip, .note-md) h1 { font-size: 15px; }
+:is(#hover-tip, .note-md) h2 { font-size: 14px; }
+:is(#hover-tip, .note-md) h3 { font-size: 13px; }
+:is(#hover-tip, .note-md) h4, :is(#hover-tip, .note-md) h5, :is(#hover-tip, .note-md) h6 { font-size: 12px; }
+:is(#hover-tip, .note-md) ul, :is(#hover-tip, .note-md) ol { margin: 0 0 6px; padding-left: 18px; }
+:is(#hover-tip, .note-md) li { margin: 2px 0; }
+:is(#hover-tip, .note-md) code {
   background: var(--btn); border-radius: 4px; padding: 0 4px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px;
 }
-#hover-tip pre {
+:is(#hover-tip, .note-md) pre {
   margin: 0 0 6px; padding: 8px; background: var(--prebg);
   border: 1px solid var(--border); border-radius: var(--radius-s); overflow-x: auto;
 }
-#hover-tip pre code { background: none; padding: 0; font-size: 11px; }
-#hover-tip blockquote {
+:is(#hover-tip, .note-md) pre code { background: none; padding: 0; font-size: 11px; }
+:is(#hover-tip, .note-md) blockquote {
   margin: 0 0 6px; padding-left: 10px; border-left: 3px solid var(--border2); color: var(--muted);
 }
-#hover-tip hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
-#hover-tip a { color: var(--accent); text-decoration: none; }
+:is(#hover-tip, .note-md) hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
+:is(#hover-tip, .note-md) a { color: var(--accent); text-decoration: none; }
+
+/* 触屏备注浮层：固定在卡片附近弹出，不改变卡片高度（规避部分 WebView 网格卡片不随内容变高） */
+#note-pop {
+  position: fixed; z-index: 70;
+  width: min(360px, calc(100vw - 24px));
+  max-height: 60vh; overflow: auto;
+  padding: 10px 12px;
+  background: var(--dialog); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-m);
+  box-shadow: var(--shadow-3);
+  font-size: 12px; line-height: 1.55; word-break: break-word;
+}
+#note-pop[hidden] { display: none; }
 
 /* ---- 桌面端覆盖（置于末尾，确保压过前面的基础规则）---- */
+/* 触屏（手机）：阅读控件那一行横向空间紧张。
+   #mode-tab 是左对齐、宽度自适应，右边还有 ◑（right:84）和 单页/双页（right:10），
+   在 393pt 宽的 iPhone 上药丸（约 240pt）会直接压到这两个控件上。
+   这里收紧内边距，并给一个「不许越过右侧控件」的最大宽度，兜底可横向滚动。 */
+@media (hover: none), (pointer: coarse) {
+  #mode-tab {
+    max-width: calc(100% - 56px - 126px);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+  #mode-tab button { padding: 6px 6px; }
+  #mode-tab .ctl-sep { margin: 0 1px; }
+  #mode-tab::-webkit-scrollbar { display: none; }
+}
+
 /* Mac（桌面）：整条隐藏应用内标题栏（logo/时间/信号），用系统原生标题栏 */
 @media (hover: hover) and (pointer: fine) {
   #titlebar { display: none !important; }

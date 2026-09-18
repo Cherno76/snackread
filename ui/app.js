@@ -58,8 +58,9 @@ function titleBarStatus() {
     barCellEl.textContent = cell;
   }
   if (battery >= 0 && battery <= 100) {
-    // 左右各留 1.5px 内边距：100% 时两侧边距一致，右边缘不溢出边框
-    batFillEl.style.width = `calc(${battery}% - 3px)`;
+    // 电量条按“内部可用宽度 (100% - 左右内边距 3px)”等比计算，
+    // 保证绿色条右边界与浅色内芯同比例对齐，且 100% 时两边边距一致。
+    batFillEl.style.width = `calc((100% - 3px) * ${battery} / 100)`;
     batPctEl.textContent = String(battery);
     batEl.classList.toggle('low', battery <= 20);
     batEl.classList.toggle('charging', charging);
@@ -123,6 +124,7 @@ const nextVolCancelEl = document.getElementById('next-vol-cancel');
 const nextVolExitEl = document.getElementById('next-vol-exit');
 const metaNoteEl = document.getElementById('meta-note');
 const hoverTipEl = document.getElementById('hover-tip');
+const notePopEl = document.getElementById('note-pop');
 const tocBtnEl = document.getElementById('toc-btn');
 const readerBackEl = document.getElementById('reader-back');
 const fontMinusBtn = document.getElementById('font-minus');
@@ -348,6 +350,13 @@ function arrowLeftIconEl() {
   ]);
 }
 
+// Lucide 的 chevron-down（详情展开/收起箭头）
+function chevronDownIconEl() {
+  return makeSvg([
+    { tag: 'path', attrs: { d: 'm6 9 6 6 6-6' } },
+  ]);
+}
+
 // Lucide 的 rotate-ccw（重置）图标
 function resetIconEl() {
   return makeSvg([
@@ -532,6 +541,10 @@ function applyReaderTheme(theme, persist = true) {
   stripEl.classList.remove('theme-sepia', 'theme-dark');
   if (theme === 'sepia') stripEl.classList.add('theme-sepia');
   else if (theme === 'dark') stripEl.classList.add('theme-dark');
+  // 同一套主题变量也挂到 body：阅读模式下安全区和标题栏要用阅读背景色
+  document.body.classList.remove('theme-sepia', 'theme-dark');
+  if (theme === 'sepia') document.body.classList.add('theme-sepia');
+  else if (theme === 'dark') document.body.classList.add('theme-dark');
   if (persist) {
     if (flipBookDir) {
       // 单书记忆：阅读背景随书保存（与阅读模式/字号同一 scope）
@@ -1688,6 +1701,8 @@ function setFocus(f) {
   // 阅读：标题栏/底部状态栏默认隐藏，随控件呼出
   document.body.classList.toggle('reading', f === 'strip');
   document.body.classList.remove('ctl-on');
+  // iOS：阅读模式隐藏系统状态栏（App 自己的标题栏会显示时间/电量），回书库恢复
+  invoke('set_status_bar_hidden', { hidden: f === 'strip' }).catch(() => {});
   if (f !== 'strip') {
     // 退出阅读：清空标题栏里的书名/卷信息，回到纯应用名
     winTitleBook = '';
@@ -2099,6 +2114,13 @@ const libApiKeyStateEl = document.getElementById('lib-apikey-state');
 const libPresetExportEl = document.getElementById('lib-preset-export');
 const libPresetStateEl = document.getElementById('lib-preset-state');
 let libBrowsePath = '';
+const libPickRowEl = document.getElementById('lib-pick-row');
+const libPickEl = document.getElementById('lib-pick');
+const libPickStateEl = document.getElementById('lib-pick-state');
+// iOS 沙盒：容器外的目录（iCloud Drive / 其他 App 的文件夹 / 外接存储）只能通过
+// 系统文件夹选择器授权后访问，所以这个入口只在 iOS 上出现。
+const IS_IOS_APP = /iPhone|iPad|iPod/.test(navigator.userAgent);
+if (IS_IOS_APP) libPickRowEl.hidden = false;
 
 libGearEl.appendChild(gearIconEl());
 
@@ -2148,6 +2170,7 @@ function openLibDialog() {
   loadLibVolumes();
   renderLibList();
   renderLibDirs();
+  refreshWorkDirInfo();
   libDialogEl.hidden = false;
 }
 
@@ -2314,6 +2337,110 @@ async function renderLibDirs() {
 }
 
 libGearEl.addEventListener('click', openLibDialog);
+libPickEl.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  libPickStateEl.textContent = '等待选择…';
+  try {
+    const picked = await invoke('pick_folder');
+    libPickStateEl.textContent = '';
+    libBrowsePath = picked;
+    renderLibDirs();
+  } catch (err) {
+    const msg = typeof err === 'string' && err ? err : '已取消';
+    libPickStateEl.textContent = msg;
+    setTimeout(() => {
+      if (libPickStateEl.textContent === msg) libPickStateEl.textContent = '';
+    }, 2500);
+  }
+});
+
+// ---- 数据目录（iOS：放到「我的 iPhone」下的目录，重装不丢）----
+const libWorkdirWrapEl = document.getElementById('lib-workdir-wrap');
+const libWorkdirPathEl = document.getElementById('lib-workdir-path');
+const libWorkdirChangeEl = document.getElementById('lib-workdir-change');
+const libWorkdirStateEl = document.getElementById('lib-workdir-state');
+if (IS_IOS_APP) libWorkdirWrapEl.hidden = false;
+
+// 把容器路径显示成用户看得懂的样子
+function prettyWorkDir(p) {
+  const marker = '/File Provider Storage/';
+  const i = p.indexOf(marker);
+  if (i >= 0) return '我的 iPhone/' + p.slice(i + marker.length);
+  const app = '/Data/Application/';
+  const j = p.indexOf(app);
+  if (j >= 0) {
+    const rest = p.slice(j + app.length).split('/').slice(1).join('/');
+    return '应用内部/' + rest;
+  }
+  return p;
+}
+
+async function refreshWorkDirInfo() {
+  if (!IS_IOS_APP) return;
+  try {
+    const info = await invoke('work_dir_info');
+    let label;
+    if (info.external) label = '（外部目录：重装不丢）';
+    else if (info.pending) label = '（已指定，重启应用后生效）';
+    else if (info.lost) label = '（外部目录授权失效，暂用应用内部目录）';
+    else label = '（应用内部：重装/卸载会清空）';
+    const shown = info.pending && info.target ? info.target : info.path;
+    libWorkdirPathEl.textContent = prettyWorkDir(shown) + label;
+    if (info.lost) {
+      libWorkdirStateEl.textContent = '请重新指定数据目录';
+    } else if (!info.pending) {
+      libWorkdirStateEl.textContent = '';
+    }
+  } catch { /* 忽略 */ }
+}
+
+async function changeWorkDir() {
+  const ok = await confirmDialog(
+    '把数据目录放到「我的 iPhone」下的目录（重装不丢）？' +
+    '选一个目录后会在其中创建 .SnackRead 存放缩略图缓存和书库数据库。' +
+    '注意别选「我的 iPhone → SnackRead」——那是应用自己的容器，重装照样会清空。'
+  );
+  if (!ok) return;
+  libWorkdirStateEl.textContent = '等待选择…';
+  try {
+    const picked = await invoke('pick_work_dir');
+    libWorkdirStateEl.textContent = '';
+    libWorkdirPathEl.textContent = prettyWorkDir(picked.path) + '（已指定，重启应用后生效）';
+    const msg = picked.adopt
+      ? '这个目录里已经有一份书库数据，重启后会直接接管。'
+      : '重启后会把当前数据迁移到这个目录。';
+    const now = await confirmDialog(msg + '现在重启应用？');
+    if (now) {
+      await invoke('restart_app');
+    } else {
+      libWorkdirStateEl.textContent = '重启应用后生效';
+    }
+  } catch (e) {
+    libWorkdirStateEl.textContent = (typeof e === 'string' && e) ? e : '已取消';
+  }
+}
+
+libWorkdirChangeEl.addEventListener('click', (e) => {
+  e.stopPropagation();
+  changeWorkDir();
+});
+
+// 首次启动（或全新安装后）提示一次：数据放在应用内部会随重装清空
+async function maybePromptWorkDir() {
+  if (!IS_IOS_APP) return;
+  let asked = false;
+  try { asked = localStorage.getItem('cshow.workdirPrompted') === '1'; } catch { /* 忽略 */ }
+  if (asked) return;
+  try { localStorage.setItem('cshow.workdirPrompted', '1'); } catch { /* 忽略 */ }
+  let info = null;
+  try { info = await invoke('work_dir_info'); } catch { return; }
+  if (!info || info.external) return;
+  const ok = await confirmDialog(
+    '数据现在存在应用内部，重装或卸载会清空。要把数据目录放到「我的 iPhone」下的目录吗？'
+  );
+  if (ok) changeWorkDir();
+}
+
 libDialogCloseEl.addEventListener('click', closeLibDialog);
 libDialogEl.addEventListener('click', (e) => {
   if (e.target === libDialogEl) closeLibDialog();
@@ -2640,6 +2767,16 @@ async function switchStripTo(en) {
 }
 
 // 退出条漫时，把当前分卷的阅读位置写进所属电子书文件夹
+let cachedEbookRoot;
+let cachedEbookRootDir = null;
+async function getEbookRoot(dir) {
+  if (cachedEbookRootDir === dir && cachedEbookRoot !== undefined) return cachedEbookRoot;
+  const root = await invoke('ebook_root', { dir }).catch(() => null);
+  cachedEbookRootDir = dir;
+  cachedEbookRoot = root;
+  return root;
+}
+
 async function saveVolumePositionForExit(opts = {}) {
   if (currentIdx < 0 || pages.length === 0) return;
   // 在 await 之前同步捕获会被 exitStripMode 后续清理掉的状态（否则保存会拿到 null）
@@ -2653,7 +2790,7 @@ async function saveVolumePositionForExit(opts = {}) {
   if (kind === 'epub' && wasTextBook) {
     const progress = (typeof opts.progress === 'number') ? opts.progress : 0;
     const finished = progress >= 0.995;
-    const root = await invoke('ebook_root', { dir: cwdAtSave }).catch(() => null);
+    const root = await getEbookRoot(cwdAtSave);
     if (!root) return;
     await invoke('save_volume_position', {
       ebookDir: root,
@@ -2682,7 +2819,7 @@ async function saveVolumePositionForExit(opts = {}) {
   } else {
     finished = idx >= lastIdx;
   }
-  const root = await invoke('ebook_root', { dir: cwdAtSave }).catch(() => null);
+  const root = await getEbookRoot(cwdAtSave);
   if (!root) return;
   if (kind === 'imgdir' && cwdAtSave === root) return; // 电子书根目录本身不算图片分卷
   await invoke('save_volume_position', {
@@ -2700,6 +2837,7 @@ async function saveVolumePositionForExit(opts = {}) {
 function highlightIndex(idx) {
   if (idx < 0 || idx >= pages.length) return;
   currentIdx = idx;
+  schedulePositionSave();
 }
 
 // ---- 图片条漫 ----
@@ -3329,6 +3467,31 @@ async function savePosition() {
   } catch { /* 目录只读等场景静默跳过 */ }
 }
 
+// —— 阅读中自动保存进度（防抖 + 定时 + 切后台），避免中途被杀/切走丢进度 ——
+let posSaveTimer = 0;
+function buildVolSaveOpts() {
+  return {
+    flip: flipOn,
+    double: doublePage,
+    textBook: textBook,
+    textCol: textCol,
+    textTotalPages: textTotalPages,
+    progress: textBook ? textProgress(flipOn) : null,
+  };
+}
+async function saveReadingProgress() {
+  if (!readingStartAt || stripEl.hidden) return; // 未在阅读
+  if (Date.now() - readingStartAt < 1500) return; // 跳过进入后的初始恢复期，避免用未就绪状态覆盖位置
+  // 与退出逻辑一致：滚动模式存目录位置；翻页/文字书存分卷位置（含文字书百分比）
+  if (!flipOn) await savePosition();
+  await saveVolumePositionForExit(buildVolSaveOpts());
+}
+function schedulePositionSave() {
+  if (!readingStartAt) return;
+  clearTimeout(posSaveTimer);
+  posSaveTimer = setTimeout(saveReadingProgress, 700);
+}
+
 function scrollStrip(delta) {
   // 平滑滚动：滚动（条漫）模式的翻页不再是瞬间跳变
   stripEl.scrollBy({ top: delta, behavior: 'smooth' });
@@ -3825,6 +3988,7 @@ function updatePageTocSel() {
 stripEl.addEventListener('scroll', () => {
   hideReadingControlsNow(); // 滑动阅读时立即收起控件
   highlightIndex(currentStripIndex());
+  schedulePositionSave();
   updatePageTocSel();
   // 虚拟化：滚动模式跟随当前位置补/删占位 div（rAF 合并高频滚动）
   if (stripKind === 'epub' && textBook && !flipOn) {
@@ -5454,9 +5618,32 @@ function makeLibCard(b, onOpen) {
     if (b.is_dir) corner.appendChild(refresh);
     corner.appendChild(edit);
     corner.appendChild(eye);
-    card.appendChild(thumbWrap);
-    card.appendChild(info);
+    // 卡片头（行）：缩略图 + 信息；corner 仍吸附在卡片右上角
+    const head = document.createElement('div');
+    head.className = 'card-head';
+    head.appendChild(thumbWrap);
+    head.appendChild(info);
+    card.appendChild(head);
     card.appendChild(corner);
+    // 备注折叠面板：仅列表视图 + 该书有备注时显示（触屏无 hover 也能看到备注）→ 详情/收起
+    const noteText = ((bookMetaMap[b.path] && bookMetaMap[b.path].note) || '').trim();
+    card._note = noteText;
+    if (noteText) {
+      card.classList.add('has-note');
+      const toggle = document.createElement('button');
+      toggle.className = 'card-detail-toggle';
+      toggle.type = 'button';
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.appendChild(document.createTextNode('详情'));
+      toggle.appendChild(chevronDownIconEl());
+      toggle.title = '展开/收起备注';
+      toggle.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+        toggleNotePop(card, toggle);
+      });
+      head.appendChild(toggle);
+    }
   } else {
     // 缩略图视图：书文件夹左上角刷新；散装书缩略图左上角类型胶囊
     if (b.is_dir) card.appendChild(refresh);
@@ -5472,7 +5659,8 @@ function makeLibCard(b, onOpen) {
     card.appendChild(edit);
     card.appendChild(eye);
   }
-  card.addEventListener('click', () => {
+  card.addEventListener('click', (e) => {
+    if (e.target && e.target.closest && e.target.closest('.card-detail-toggle')) return;
     const i = libGridCards.indexOf(b);
     if (i < 0) return;
     if (IS_TOUCH || i === libGridSel) {
@@ -5486,6 +5674,58 @@ function makeLibCard(b, onOpen) {
   });
   return card;
 }
+
+// 触屏备注浮层：点击卡片“详情”在卡片旁弹出固定浮层，不改变卡片高度，
+// 规避部分设备 WebView “网格卡片不随内部内容变高”导致的面板无法展开。
+let openNoteCardEl = null;
+let openNoteToggleEl = null;
+function hideNotePop() {
+  notePopEl.hidden = true;
+  if (openNoteToggleEl) {
+    openNoteToggleEl.classList.remove('open');
+    openNoteToggleEl.setAttribute('aria-expanded', 'false');
+  }
+  openNoteCardEl = null;
+  openNoteToggleEl = null;
+}
+function toggleNotePop(card, toggle) {
+  if (!notePopEl.hidden && openNoteCardEl === card) {
+    hideNotePop();
+    return;
+  }
+  hideNotePop();
+  notePopEl.innerHTML = '<div class="note-md">' + renderMarkdown(card._note || '') + '</div>';
+  notePopEl.hidden = false;
+  // 定位到按钮附近，并夹在视口内
+  const r = toggle.getBoundingClientRect();
+  const pw = notePopEl.offsetWidth;
+  const ph = notePopEl.offsetHeight;
+  let x = r.right - pw;
+  let y = r.bottom + 6;
+  if (x < 12) x = 12;
+  if (x + pw > window.innerWidth - 12) x = window.innerWidth - pw - 12;
+  if (y + ph > window.innerHeight - 12) y = r.top - ph - 6;
+  if (y < 12) y = 12;
+  notePopEl.style.left = x + 'px';
+  notePopEl.style.top = y + 'px';
+  toggle.classList.add('open');
+  toggle.setAttribute('aria-expanded', 'true');
+  openNoteCardEl = card;
+  openNoteToggleEl = toggle;
+}
+// 点击浮层或详情按钮之外关闭
+document.addEventListener('click', (e) => {
+  if (notePopEl.hidden) return;
+  if (e.target && e.target.closest && e.target.closest('#note-pop, .card-detail-toggle')) return;
+  hideNotePop();
+});
+
+// 阅读中切到后台立即保存进度
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveReadingProgress();
+});
+// 阅读中每 15s 兜底保存一次
+setInterval(() => { saveReadingProgress(); }, 15000);
 
 async function toggleLibBookEye(b, eyeEl) {
   let off = false;
@@ -5638,6 +5878,14 @@ async function loadLibInfo(b, card) {
     } else if (!cover && b.is_pdf) {
       try {
         const c = await renderPdfThumb(b.path);
+        if (c) cover = c;
+      } catch { /* 忽略 */ }
+    }
+    // 兜底：预置库导入的封面写进了数据库（get_book_cover），
+    // 分卷缩略图缓存可能先于预置落地而为空，这里直接读 DB 封面
+    if (!cover) {
+      try {
+        const c = await invoke('get_book_cover', { path: b.path });
         if (c) cover = c;
       } catch { /* 忽略 */ }
     }
@@ -5992,4 +6240,5 @@ document.addEventListener('keydown', (e) => {
   const start = await invoke('initial_dir');
   await loadDir(start);
   openLibGrid(); // 应用始终为图标模式
+  maybePromptWorkDir(); // iOS：提示把数据目录放到重装不丢的位置
 })();

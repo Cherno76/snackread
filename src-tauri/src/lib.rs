@@ -261,6 +261,10 @@ fn list_dir(state: tauri::State<'_, db::Db>, path: String) -> Result<Vec<FsEntry
         if name.starts_with('.') {
             continue;
         }
+        // 数据目录自己的内部条目（epub/thumbs/covers/库文件）不当书显示
+        if is_work_dir_internal(Path::new(&path), &name) {
+            continue;
+        }
         let p = item.path();
         let is_dir = item.file_type().map(|t| t.is_dir()).unwrap_or(false);
         let meta = item.metadata().ok();
@@ -644,7 +648,15 @@ fn external_presets_path() -> PathBuf {
     {
         PathBuf::from("/storage/emulated/0/E-Books/presets.json")
     }
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_os = "ios")]
+    {
+        // iOS：放到应用 Documents（通过 Finder/文件共享可访问），与书放一起。
+        // 书库网格只显示 is_dir/is_pdf/is_epub/is_txt，纯 .json 会被过滤，不会混进书库。
+        dirs::document_dir()
+            .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")))
+            .join("presets.json")
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         work_dir().join("presets.json")
     }
@@ -689,8 +701,8 @@ fn export_metadata_presets(state: tauri::State<'_, db::Db>) -> Result<String, St
         let cover_bytes = b
             .cover
             .as_deref()
-            .filter(|p| Path::new(p).is_file())
-            .and_then(cover_thumb_jpeg);
+            .and_then(resolve_cover_path)
+            .and_then(|p| cover_thumb_jpeg(&norm_path(&p)));
         let cover_b64 = cover_bytes
             .as_deref()
             .map(|b| base64::engine::general_purpose::STANDARD.encode(b))
@@ -835,11 +847,14 @@ fn apply_preset_cover(conn: &rusqlite::Connection, path: &str, b64: &str) {
     if fs::create_dir_all(&dir).is_err() {
         return;
     }
-    let out = dir.join(format!("cover_{}.jpeg", cover_key(Path::new(&norm))));
+    let name = format!("cover_{}.jpeg", cover_key(Path::new(&norm)));
+    let out = dir.join(&name);
     if fs::write(&out, &bytes).is_err() {
         return;
     }
-    let _ = db::set_book_cover(conn, &norm, Some(&norm_path(&out)));
+    // 只存文件名：iOS 的 data container UUID 在重装/系统升级后可能变，
+    // 存绝对路径的话下次就找不到封面了（见 resolve_cover_path）。
+    let _ = db::set_book_cover(conn, &norm, Some(&name));
 }
 
 #[tauri::command]
@@ -2076,7 +2091,9 @@ fn initial_dir(state: tauri::State<'_, db::Db>) -> String {
     }
     #[cfg(target_os = "android")]
     return android_default_start_dir();
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_os = "ios")]
+    return ios_default_start_dir();
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     dirs::home_dir()
         .map(|p| norm_path(&p))
         .unwrap_or_else(|| "/".into())
@@ -2091,6 +2108,544 @@ fn android_default_start_dir() -> String {
     } else {
         norm_path(&android_home())
     }
+}
+
+/// iOS 默认起始目录：应用容器里的 Documents（用户通过「文件」App / Finder 导入的书籍都在这）。
+/// iOS 是沙盒，没有 Android 那种公共存储，所以书库根直接落在 Documents。
+#[cfg(target_os = "ios")]
+fn ios_default_start_dir() -> String {
+    dirs::document_dir()
+        .map(|p| norm_path(&p))
+        .unwrap_or_else(|| norm_path(&dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"))))
+}
+
+// ---- iOS 外部目录授权（系统文件夹选择器 + security-scoped bookmark）----
+//
+// iOS 沙箱下容器外的目录必须由用户通过系统选择器显式授权，且授权只对本次运行有效；
+// 想跨启动保留就得把 security-scoped bookmark 存下来，下次启动重新 resolve +
+// startAccessingSecurityScopedResource。这里负责存储与恢复，选择器本身在
+// gen/apple/Sources/snack-read/main.mm。
+
+/// 授权书记录文件（路径 → bookmark）。放在应用配置目录，不进 cshow-work。
+#[cfg(target_os = "ios")]
+fn ios_bookmark_store() -> PathBuf {
+    app_config_dir().join("ios_bookmarks.json")
+}
+
+#[cfg(target_os = "ios")]
+fn load_ios_bookmarks() -> Vec<(String, Vec<u8>)> {
+    use base64::Engine;
+    let Ok(text) = fs::read_to_string(ios_bookmark_store()) else {
+        return Vec::new();
+    };
+    let Ok(list) = serde_json::from_str::<Vec<serde_json::Value>>(&text) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for item in list {
+        let path = item.get("path").and_then(|v| v.as_str());
+        let bookmark = item.get("bookmark").and_then(|v| v.as_str());
+        if let (Some(p), Some(b)) = (path, bookmark) {
+            if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(b) {
+                out.push((p.to_string(), bytes));
+            }
+        }
+    }
+    out
+}
+
+#[cfg(target_os = "ios")]
+fn save_ios_bookmark(path: &str, bookmark: &[u8]) {
+    use base64::Engine;
+    let mut list = load_ios_bookmarks();
+    list.retain(|(p, _)| p != path);
+    list.push((path.to_string(), bookmark.to_vec()));
+    let json: Vec<serde_json::Value> = list
+        .into_iter()
+        .map(|(p, b)| {
+            serde_json::json!({
+                "path": p,
+                "bookmark": base64::engine::general_purpose::STANDARD.encode(b),
+            })
+        })
+        .collect();
+    let store = ios_bookmark_store();
+    if let Some(dir) = store.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    match serde_json::to_string_pretty(&json) {
+        Ok(text) => {
+            if let Err(e) = fs::write(&store, text) {
+                log::warn!("写入 iOS 目录授权记录失败: {e}");
+            }
+        }
+        Err(e) => log::warn!("序列化 iOS 目录授权记录失败: {e}"),
+    }
+}
+
+// ObjC 侧（gen/apple/Sources/snack-read/main.mm）在选择器/恢复逻辑实现好后，
+// 会在 UIApplicationMain 之前把函数指针注册进来。方向刻意做成 ObjC → Rust：
+// Rust 只持有函数指针、不引用 main.o 的符号，否则 iOS 的 cdylib 链接会因为
+// 「Undefined symbols: _snackread_pick_folder」而失败。
+
+#[cfg(target_os = "ios")]
+type IosDirCb = extern "C" fn(*const std::ffi::c_char, *const u8, usize, *mut std::ffi::c_void);
+#[cfg(target_os = "ios")]
+type IosPickFn = extern "C" fn(IosDirCb, *mut std::ffi::c_void);
+#[cfg(target_os = "ios")]
+type IosRestoreFn = extern "C" fn(*const u8, usize) -> *mut std::ffi::c_char;
+#[cfg(target_os = "ios")]
+type IosFreeFn = extern "C" fn(*mut std::ffi::c_char);
+#[cfg(target_os = "ios")]
+type IosStatusBarFn = extern "C" fn(std::ffi::c_int);
+
+#[cfg(target_os = "ios")]
+static IOS_PICK_FN: std::sync::Mutex<Option<IosPickFn>> = std::sync::Mutex::new(None);
+#[cfg(target_os = "ios")]
+static IOS_RESTORE_FN: std::sync::Mutex<Option<IosRestoreFn>> = std::sync::Mutex::new(None);
+#[cfg(target_os = "ios")]
+static IOS_FREE_FN: std::sync::Mutex<Option<IosFreeFn>> = std::sync::Mutex::new(None);
+#[cfg(target_os = "ios")]
+static IOS_STATUS_BAR_FN: std::sync::Mutex<Option<IosStatusBarFn>> = std::sync::Mutex::new(None);
+#[cfg(target_os = "ios")]
+static IOS_WORK_DIR: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+#[cfg(target_os = "ios")]
+static IOS_WORK_DIR_LOST: std::sync::Mutex<bool> = std::sync::Mutex::new(false);
+
+/// 由 main.mm 调用，注册 iOS 原生实现（文件夹选择器 / 授权恢复 / 状态栏显隐）。
+#[cfg(target_os = "ios")]
+#[no_mangle]
+pub extern "C" fn snackread_register_bridge(
+    pick: IosPickFn,
+    restore: IosRestoreFn,
+    free_str: IosFreeFn,
+    status_bar: IosStatusBarFn,
+) {
+    *IOS_PICK_FN.lock().unwrap() = Some(pick);
+    *IOS_RESTORE_FN.lock().unwrap() = Some(restore);
+    *IOS_FREE_FN.lock().unwrap() = Some(free_str);
+    *IOS_STATUS_BAR_FN.lock().unwrap() = Some(status_bar);
+}
+
+/// 解析 bookmark：恢复安全作用域访问，返回它当前指向的路径。
+#[cfg(target_os = "ios")]
+fn restore_bookmark(bookmark: &[u8]) -> Option<String> {
+    if bookmark.is_empty() {
+        return None;
+    }
+    let restore = (*IOS_RESTORE_FN.lock().unwrap())?;
+    let ptr = restore(bookmark.as_ptr(), bookmark.len());
+    if ptr.is_null() {
+        return None;
+    }
+    let path = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+    if let Some(free_str) = *IOS_FREE_FN.lock().unwrap() {
+        free_str(ptr);
+    }
+    Some(path)
+}
+
+// ---------------------------------------------------------------------------
+// iOS 外部数据目录
+//
+// 应用自己容器（Documents / Library）路径里的 UUID 每次重装都会变，而且卸载就清空。
+// 把工作目录放到「我的 iPhone」下的目录（本地文件提供者容器，路径稳定），重装后只要
+// 重新指一次目录就能接管原有数据。用户选的是**父目录**，真正的工作目录是
+// <父目录>/.SnackRead（点开头，书库扫描会跳过它）。
+// 位置以 security-scoped bookmark 为准，不再持久化绝对路径。
+// ---------------------------------------------------------------------------
+
+#[cfg(target_os = "ios")]
+const IOS_WORKDIR_NAME: &str = ".SnackRead";
+
+/// 我们自己放在数据目录里的东西：列目录时要跳过，
+/// 免得用户把书库根选成数据目录后，这些内部目录被当成书显示出来。
+const WORK_DIR_INTERNAL_NAMES: [&str; 7] = [
+    "epub",
+    "thumbs",
+    "covers",
+    "library.sqlite3",
+    "library.sqlite3-wal",
+    "library.sqlite3-shm",
+    "migration_backup.json",
+];
+
+/// 当前列的就是数据目录本身、且条目是内部名字时，跳过。
+fn is_work_dir_internal(dir: &Path, name: &str) -> bool {
+    WORK_DIR_INTERNAL_NAMES.contains(&name) && norm_path(dir) == norm_path(&work_dir())
+}
+
+#[cfg(target_os = "ios")]
+fn ios_workdir_file() -> PathBuf {
+    app_config_dir().join("ios_workdir.json")
+}
+
+/// (父目录, bookmark, 迁移来源)
+#[cfg(target_os = "ios")]
+fn load_ios_workdir() -> Option<(String, Vec<u8>, Option<String>)> {
+    use base64::Engine;
+    let text = fs::read_to_string(ios_workdir_file()).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let parent = v.get("parent")?.as_str()?.to_string();
+    let bookmark = base64::engine::general_purpose::STANDARD
+        .decode(v.get("bookmark")?.as_str()?)
+        .ok()?;
+    let migrate_from = v
+        .get("migrate_from")
+        .and_then(|x| x.as_str())
+        .map(|s| s.to_string());
+    Some((parent, bookmark, migrate_from))
+}
+
+#[cfg(target_os = "ios")]
+fn save_ios_workdir(parent: &str, bookmark: &[u8], migrate_from: Option<&str>) {
+    use base64::Engine;
+    let json = serde_json::json!({
+        "parent": parent,
+        "bookmark": base64::engine::general_purpose::STANDARD.encode(bookmark),
+        "migrate_from": migrate_from,
+    });
+    let file = ios_workdir_file();
+    if let Some(dir) = file.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    match serde_json::to_string_pretty(&json) {
+        Ok(text) => {
+            if let Err(e) = fs::write(&file, text) {
+                log::warn!("写入数据目录配置失败: {e}");
+            }
+        }
+        Err(e) => log::warn!("序列化数据目录配置失败: {e}"),
+    }
+}
+
+/// 把旧工作目录整体搬到新目录（同卷 rename 很快；跨卷退化成复制+删除）。
+#[cfg(target_os = "ios")]
+fn move_work_dir_contents(old: &Path, new: &Path) -> Result<usize, String> {
+    fs::create_dir_all(new).map_err(|e| e.to_string())?;
+    let mut moved = 0usize;
+    for entry in fs::read_dir(old).map_err(|e| e.to_string())?.flatten() {
+        let from = entry.path();
+        let Some(name) = from.file_name() else { continue };
+        let to = new.join(name);
+        if to.exists() {
+            continue; // 目标已有同名内容：以目标为准，不覆盖
+        }
+        if fs::rename(&from, &to).is_ok() {
+            moved += 1;
+        } else if from.is_dir() {
+            if copy_dir_all(&from, &to).is_ok() {
+                let _ = fs::remove_dir_all(&from);
+                moved += 1;
+            }
+        } else if fs::copy(&from, &to).is_ok() {
+            let _ = fs::remove_file(&from);
+            moved += 1;
+        }
+    }
+    Ok(moved)
+}
+
+/// 启动时（必须在 work_dir() 之前调用）：恢复容器外目录授权、解析外部数据目录，
+/// 必要时把旧工作目录迁移过去。
+#[cfg(target_os = "ios")]
+fn ios_startup_restore() {
+    for (path, bookmark) in load_ios_bookmarks() {
+        if restore_bookmark(&bookmark).is_some() {
+            log::info!("恢复 iOS 目录授权: {path}");
+        } else {
+            log::warn!("iOS 目录授权失效: {path}");
+        }
+    }
+    let Some((parent, bookmark, migrate_from)) = load_ios_workdir() else {
+        return;
+    };
+    let Some(resolved) = restore_bookmark(&bookmark) else {
+        log::warn!("外部数据目录授权失效，回退到应用内部目录: {parent}");
+        if let Ok(mut g) = IOS_WORK_DIR_LOST.lock() {
+            *g = true;
+        }
+        return;
+    };
+    // v0.5.82 曾在所选目录里建 .SnackRead，现在改成直接用所选目录本身：
+    // 如果里面只剩那个子目录，就把它摊平上来（只此一次，之后不再建）。
+    let dir = PathBuf::from(&resolved);
+    if let Err(e) = fs::create_dir_all(&dir) {
+        log::warn!("外部数据目录不可用（{e}），回退到应用内部目录");
+        if let Ok(mut g) = IOS_WORK_DIR_LOST.lock() {
+            *g = true;
+        }
+        return;
+    }
+    let legacy = dir.join(IOS_WORKDIR_NAME);
+    if legacy.is_dir() && !dir.join("library.sqlite3").exists() {
+        match move_work_dir_contents(&legacy, &dir) {
+            Ok(n) => {
+                let _ = fs::remove_dir(&legacy);
+                log::info!("已把 {IOS_WORKDIR_NAME} 里的 {n} 项摊平到数据目录");
+            }
+            Err(e) => log::warn!("摊平 {IOS_WORKDIR_NAME} 失败: {e}"),
+        }
+    }
+    if let Some(old) = migrate_from {
+        if dir.join("library.sqlite3").exists() {
+            // 目标里已经有库（重装后重新指定就走这条路）：以它为准
+            log::info!("外部数据目录已有数据，直接接管: {}", norm_path(&dir));
+        } else {
+            let old = PathBuf::from(&old);
+            if old.is_dir() {
+                match move_work_dir_contents(&old, &dir) {
+                    Ok(n) => log::info!("已迁移 {n} 项到外部数据目录: {}", norm_path(&dir)),
+                    Err(e) => log::warn!("迁移到外部数据目录失败: {e}"),
+                }
+            }
+        }
+        save_ios_workdir(&resolved, &bookmark, None);
+    }
+    if let Ok(mut g) = IOS_WORK_DIR.lock() {
+        *g = Some(dir);
+    }
+}
+
+#[cfg(not(target_os = "ios"))]
+fn ios_startup_restore() {}
+
+/// 隐藏/显示系统状态栏。阅读模式进入沉浸式时隐藏（App 自己的标题栏会显示时间/电量），
+/// 回到书库时恢复。iOS 以外平台是空操作。
+#[cfg(target_os = "ios")]
+#[tauri::command]
+fn set_status_bar_hidden(hidden: bool) {
+    if let Some(f) = *IOS_STATUS_BAR_FN.lock().unwrap() {
+        f(if hidden { 1 } else { 0 });
+    }
+}
+
+#[cfg(not(target_os = "ios"))]
+#[tauri::command]
+fn set_status_bar_hidden(_hidden: bool) {}
+
+/// iOS：data container 的 UUID 在重装 / 系统升级后会变，而数据库里存的是绝对路径。
+/// 启动时把「指向旧容器、且当前容器下同名文件确实存在」的记录改写成当前路径，
+/// 否则封面、书库目录、阅读进度、单书设置都会指向不存在的文件（元数据在 SQLite 里
+/// 不受影响，所以表现为「数据还在、封面没了」）。
+#[cfg(target_os = "ios")]
+fn repair_container_paths(conn: &rusqlite::Connection) {
+    const MARKER: &str = "/Containers/Data/Application/";
+    let Some(home) = dirs::home_dir() else { return };
+    let root = norm_path(&home);
+    if !root.contains(MARKER) {
+        return;
+    }
+    let rewrite = |stored: &str| -> Option<String> {
+        if stored.is_empty() || Path::new(stored).exists() {
+            return None;
+        }
+        let idx = stored.find(MARKER)?;
+        let after = &stored[idx + MARKER.len()..];
+        let slash = after.find('/')?;
+        let rest = &after[slash + 1..];
+        let candidate = format!("{root}/{rest}");
+        Path::new(&candidate).exists().then_some(candidate)
+    };
+
+    let mut fixed = 0usize;
+    // 库里所有存绝对路径的列
+    let targets: [(&str, &str); 6] = [
+        ("libraries", "path"),
+        ("books", "path"),
+        ("books", "cover"),
+        ("positions", "volume_path"),
+        ("settings", "scope_path"),
+        ("dir_state", "path"),
+    ];
+    for (table, col) in targets {
+        let select = format!("SELECT {col} FROM {table}");
+        let mut changes: Vec<(String, String)> = Vec::new();
+        {
+            let Ok(mut stmt) = conn.prepare(&select) else { continue };
+            let Ok(mut rows) = stmt.query([]) else { continue };
+            while let Ok(Some(row)) = rows.next() {
+                let Ok(old) = row.get::<_, String>(0) else { continue };
+                if let Some(new) = rewrite(&old) {
+                    changes.push((old, new));
+                }
+            }
+        }
+        for (old, new) in changes {
+            let sql = format!("UPDATE {table} SET {col} = ?1 WHERE {col} = ?2");
+            if conn.execute(&sql, rusqlite::params![new, old]).is_ok() {
+                fixed += 1;
+            }
+        }
+    }
+    // app_state 里的「上次所在目录」
+    if let Ok(Some(saved)) = db::get_app_state(conn, "cwd") {
+        if let Some(new) = rewrite(&saved) {
+            if db::set_app_state(conn, "cwd", &new).is_ok() {
+                fixed += 1;
+            }
+        }
+    }
+    if fixed > 0 {
+        log::info!("修复 iOS 容器路径记录 {fixed} 条");
+    }
+}
+
+#[cfg(not(target_os = "ios"))]
+fn repair_container_paths(_conn: &rusqlite::Connection) {}
+
+/// 弹出系统「选择文件夹」选择器，返回被授权目录的绝对路径；用户取消返回 Err。
+/// iOS 以外平台走应用内浏览，不需要这个入口。
+#[cfg(target_os = "ios")]
+#[tauri::command]
+async fn pick_folder() -> Result<String, String> {
+    let (path, bookmark) = pick_folder_raw().await?;
+    if !bookmark.is_empty() {
+        save_ios_bookmark(&path, &bookmark);
+    }
+    Ok(path)
+}
+
+/// 弹出选择器并返回 (路径, bookmark)，由调用方决定怎么保存。
+#[cfg(target_os = "ios")]
+async fn pick_folder_raw() -> Result<(String, Vec<u8>), String> {
+    use std::ffi::{c_char, c_void, CStr};
+
+    type Picked = Option<(String, Vec<u8>)>;
+
+    extern "C" fn on_picked(path: *const c_char, bookmark: *const u8, len: usize, ctx: *mut c_void) {
+        let tx = unsafe { &*(ctx as *const std::sync::mpsc::Sender<Picked>) };
+        if path.is_null() {
+            let _ = tx.send(None);
+            return;
+        }
+        let picked = unsafe { CStr::from_ptr(path) }.to_string_lossy().into_owned();
+        let bytes = if bookmark.is_null() || len == 0 {
+            Vec::new()
+        } else {
+            unsafe { std::slice::from_raw_parts(bookmark, len) }.to_vec()
+        };
+        let _ = tx.send(Some((picked, bytes)));
+    }
+
+    // 选择器是异步的，这里阻塞等回调；不能在主线程等，所以放到阻塞线程池。
+    tauri::async_runtime::spawn_blocking(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<Picked>();
+        let pick = *IOS_PICK_FN.lock().unwrap();
+        let Some(pick) = pick else {
+            return Err("iOS 文件夹选择器不可用".to_string());
+        };
+        pick(on_picked, &tx as *const _ as *mut c_void);
+        match rx.recv() {
+            Ok(Some(picked)) => Ok(picked),
+            Ok(None) => Err("已取消".to_string()),
+            Err(_) => Err("选择文件夹失败".to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[cfg(not(target_os = "ios"))]
+#[tauri::command]
+async fn pick_folder() -> Result<String, String> {
+    Err("系统文件夹选择器仅在 iOS 上需要".to_string())
+}
+
+/// 当前数据目录（工作目录）信息，供「书库管理 → 数据目录」展示。
+#[derive(serde::Serialize)]
+struct WorkDirInfo {
+    path: String,
+    /// 当前用的就是容器外的外部目录
+    external: bool,
+    /// 配置过外部目录
+    configured: bool,
+    /// 配置过但授权失效，已回退到应用内部目录
+    lost: bool,
+    /// 刚指定、还没重启生效
+    pending: bool,
+    /// pending 时：指定的目标目录
+    target: Option<String>,
+}
+
+#[tauri::command]
+fn work_dir_info() -> WorkDirInfo {
+    let path = norm_path(&work_dir());
+    #[cfg(target_os = "ios")]
+    {
+        let config = load_ios_workdir();
+        let configured = config.is_some();
+        let target = config.as_ref().map(|(parent, _, _)| parent.clone());
+        let external = IOS_WORK_DIR.lock().map(|g| g.is_some()).unwrap_or(false);
+        let lost = *IOS_WORK_DIR_LOST.lock().unwrap();
+        let pending = configured && !external && !lost;
+        WorkDirInfo {
+            path,
+            external,
+            configured,
+            lost: configured && !external && lost,
+            pending,
+            target: if pending { target } else { None },
+        }
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        WorkDirInfo {
+            path,
+            external: false,
+            configured: false,
+            lost: false,
+            pending: false,
+            target: None,
+        }
+    }
+}
+
+/// 选择数据目录的父目录（iOS）。会在其中创建 .SnackRead，重启后由启动流程迁移/接管。
+/// 选定数据目录的结果：path = 目标目录，adopt = 里面已有数据（重启后直接接管）
+#[derive(serde::Serialize)]
+struct WorkDirPicked {
+    path: String,
+    adopt: bool,
+}
+
+#[cfg(target_os = "ios")]
+#[tauri::command]
+async fn pick_work_dir() -> Result<WorkDirPicked, String> {
+    let (picked, bookmark) = pick_folder_raw().await?;
+    if bookmark.is_empty() {
+        return Err("系统没有返回可持久化的授权，换一个目录再试".to_string());
+    }
+    let parent = PathBuf::from(&picked);
+    // 选应用自己容器里的目录等于白做：那和现在的位置一样，重装照样清空
+    if let Some(home) = dirs::home_dir() {
+        if parent.starts_with(&home) {
+            return Err("这个目录在应用自己的容器里（重装会丢）。请选「我的 iPhone」下的目录，比如「我的 iPhone/E-Books」。".to_string());
+        }
+    }
+    // 直接用所选目录本身（不再在里面建 .SnackRead）
+    let dir = parent.clone();
+    fs::create_dir_all(&dir).map_err(|e| format!("无法使用所选目录：{e}"))?;
+    let current = norm_path(&work_dir());
+    let target = norm_path(&dir);
+    let migrate = if current != target { Some(current) } else { None };
+    save_ios_workdir(&norm_path(&parent), &bookmark, migrate.as_deref());
+    Ok(WorkDirPicked { path: target, adopt: dir.join("library.sqlite3").exists() })
+}
+
+#[cfg(not(target_os = "ios"))]
+#[tauri::command]
+async fn pick_work_dir() -> Result<WorkDirPicked, String> {
+    Err("数据目录只在 iOS 上需要单独指定".to_string())
+}
+
+/// 重启应用（切数据目录后生效用）：先让 IPC 回包发出去，再退出进程。
+#[tauri::command]
+fn restart_app() {
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        std::process::exit(0);
+    });
 }
 
 /// 枚举安卓可访问的存储卷（内部存储 + 可移除外部 TF/SD 卡），供书库浏览跳转。
@@ -2165,12 +2720,22 @@ fn workdir_file() -> PathBuf {
 }
 
 fn configured_work_dir() -> Option<PathBuf> {
-    let s = fs::read_to_string(workdir_file()).ok()?;
-    let s = s.trim().to_string();
-    if s.is_empty() {
-        None
-    } else {
-        Some(PathBuf::from(s))
+    #[cfg(target_os = "ios")]
+    {
+        // iOS 的工作目录由 bookmark 授权的外部目录决定，**不能**再读 app_config_dir()/workdir：
+        // 那里存的是绝对路径，容器 UUID 一变就指向不存在的旧路径，
+        // work_dir()/db::open() 的 create_dir_all 会失败，启动直接 panic。
+        IOS_WORK_DIR.lock().ok().and_then(|g| g.clone())
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let s = fs::read_to_string(workdir_file()).ok()?;
+        let s = s.trim().to_string();
+        if s.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(s))
+        }
     }
 }
 
@@ -2179,7 +2744,13 @@ fn default_work_dir() -> PathBuf {
     {
         android_home().join("cshow-work")
     }
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_os = "ios")]
+    {
+        // iOS：把解包缓存/缩略图/数据库放在 Library/Application Support，
+        // 保持 Documents 干净，避免与用户通过「文件」App 导入的书混在一起。
+        app_config_dir().join("cshow-work")
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     dirs::document_dir()
         .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")))
         .join("cshow-work")
@@ -2308,13 +2879,23 @@ fn import_staged_migration(work: &Path) {
 
 #[tauri::command]
 fn set_work_dir(path: String) -> Result<String, String> {
-    let p = PathBuf::from(&path);
-    fs::create_dir_all(&p).map_err(|e| e.to_string())?;
-    fs::write(workdir_file(), path).map_err(|e| e.to_string())?;
-    if let Ok(mut g) = WORK_DIR.lock() {
-        *g = None; // 下次调用重新解析并迁移
+    #[cfg(target_os = "ios")]
+    {
+        // iOS 的工作目录靠 bookmark 授权，不能存绝对路径（容器 UUID 会变）。
+        // 设置入口在「书库管理 → 数据目录」，走 pick_work_dir。
+        let _ = path;
+        Err("请在「书库管理 → 数据目录」里设置".to_string())
     }
-    Ok(norm_path(&work_dir()))
+    #[cfg(not(target_os = "ios"))]
+    {
+        let p = PathBuf::from(&path);
+        fs::create_dir_all(&p).map_err(|e| e.to_string())?;
+        fs::write(workdir_file(), path).map_err(|e| e.to_string())?;
+        if let Ok(mut g) = WORK_DIR.lock() {
+            *g = None; // 下次调用重新解析并迁移
+        }
+        Ok(norm_path(&work_dir()))
+    }
 }
 
 fn mime_for(p: &Path) -> &'static str {
@@ -2447,6 +3028,28 @@ fn covers_dir() -> PathBuf {
     work_dir().join("covers")
 }
 
+/// 解析一本书的封面文件。库里可能存的是：
+///   - 文件名（新写法：相对封面目录，容器路径变了也不受影响）
+///   - 旧版存下来的绝对路径（文件还在时直接用）
+/// iOS 的 data container UUID 在重装/系统升级后会变，旧绝对路径会失效；这时用文件名
+/// 在当前封面目录里找回来。
+fn resolve_cover_path(stored: &str) -> Option<PathBuf> {
+    if stored.trim().is_empty() {
+        return None;
+    }
+    let raw = Path::new(stored);
+    if raw.is_file() {
+        return Some(raw.to_path_buf());
+    }
+    let name = raw.file_name()?;
+    let cand = covers_dir().join(name);
+    if cand.is_file() {
+        Some(cand)
+    } else {
+        None
+    }
+}
+
 fn cover_key(path: &Path) -> String {
     let mut h = DefaultHasher::new();
     "custom-cover-v1".hash(&mut h);
@@ -2530,7 +3133,8 @@ fn set_book_cover(
     let norm = norm_path(Path::new(&path));
     let dir = covers_dir();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let out = dir.join(format!("cover_{}.{}", cover_key(Path::new(&norm)), ext));
+    let name = format!("cover_{}.{}", cover_key(Path::new(&norm)), ext);
+    let out = dir.join(&name);
     fs::write(&out, &bytes).map_err(|e| e.to_string())?;
     let out_norm = norm_path(&out);
     let conn = state.0.lock().unwrap();
@@ -2544,7 +3148,8 @@ fn set_book_cover(
             .unwrap_or_else(|| "file".to_string())
     };
     db::ensure_book(&conn, &norm, &kind)?;
-    db::set_book_cover(&conn, &norm, Some(&out_norm))?;
+    // 同 apply_preset_cover：只存文件名，避免容器路径变化后失效
+    db::set_book_cover(&conn, &norm, Some(&name))?;
     Ok(out_norm)
 }
 
@@ -2559,7 +3164,9 @@ fn remove_book_cover(state: tauri::State<'_, db::Db>, path: String) -> Result<()
         .and_then(|b| b.cover);
     db::set_book_cover(&conn, &norm, None)?;
     if let Some(p) = prev {
-        let _ = fs::remove_file(Path::new(&p));
+        if let Some(file) = resolve_cover_path(&p) {
+            let _ = fs::remove_file(file);
+        }
     }
     Ok(())
 }
@@ -2569,11 +3176,22 @@ fn remove_book_cover(state: tauri::State<'_, db::Db>, path: String) -> Result<()
 fn get_book_cover(state: tauri::State<'_, db::Db>, path: String) -> Result<Option<String>, String> {
     let conn = state.0.lock().unwrap();
     let norm = norm_path(Path::new(&path));
-    Ok(db::get_book(&conn, &norm)
-        .ok()
-        .flatten()
-        .and_then(|b| b.cover)
-        .filter(|c| Path::new(c).is_file()))
+    let Some(stored) = db::get_book(&conn, &norm).ok().flatten().and_then(|b| b.cover) else {
+        return Ok(None);
+    };
+    let Some(found) = resolve_cover_path(&stored) else {
+        return Ok(None);
+    };
+    let found_norm = norm_path(&found);
+    // 旧记录存的是绝对路径且容器 UUID 已经变了：顺手改写成文件名，下次直接用
+    if found_norm != stored {
+        let name = found
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or(found_norm.clone());
+        let _ = db::set_book_cover(&conn, &norm, Some(&name));
+    }
+    Ok(Some(found_norm))
 }
 
 /// 刷新一本书的缓存：删除该书所有分卷的缩略图缓存与 EPUB 解包缓存
@@ -2614,7 +3232,8 @@ fn ebook_volumes_impl(conn: &rusqlite::Connection, dir: &Path) -> Result<Vec<Ebo
             .ok()
             .flatten()
             .and_then(|b| b.cover)
-            .filter(|c| Path::new(c).is_file())
+            .and_then(|c| resolve_cover_path(&c))
+            .map(|p| norm_path(&p))
     };
     let mut book_files: Vec<(String, PathBuf, String)> = Vec::new();
     let mut subdirs: Vec<(String, PathBuf)> = Vec::new();
@@ -5422,6 +6041,8 @@ pub fn run() {
         return;
     }
     env_logger::init();
+    // iOS：先恢复容器外目录授权并解析数据目录，必须在 work_dir() 之前
+    ios_startup_restore();
     // 打开工作目录下的 SQLite 数据库（书籍信息/书库/位置/设置/应用状态统一存这里）
     let work = work_dir();
     // Android：先确保 E-Books 预置/封面目录存在，再导入暂存迁移
@@ -5441,6 +6062,8 @@ pub fn run() {
     }
     // 只保留当前书对应的缓存，清理旧版本/已移除书残留（缓存可重建）
     cleanup_orphan_caches(&conn, &work);
+    // iOS：把库里指向旧 data container 的绝对路径改写回当前容器
+    repair_container_paths(&conn);
     tauri::Builder::default()
         .manage(BookState(Mutex::new(None)))
         .manage(db::Db(Mutex::new(conn)))
@@ -5578,6 +6201,11 @@ pub fn run() {
             app_version,
             initial_dir,
             storage_roots,
+            pick_folder,
+            set_status_bar_hidden,
+            pick_work_dir,
+            work_dir_info,
+            restart_app,
             quit_app
         ])
         .run(tauri::generate_context!())

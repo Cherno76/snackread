@@ -69,7 +69,11 @@
       </span>
       <span class="bat" id="bar-battery">
         <span class="bat-fill" id="bat-fill"></span>
-        <span class="bat-bolt" id="bat-bolt">⚡</span>
+        <span class="bat-bolt" id="bat-bolt" aria-hidden="true">
+          <svg viewBox="0 0 12 17" width="11" height="15" fill="none">
+            <path d="M7 0 L1 9.5 H5.2 L3.8 17 L11 6.6 H6.6 Z"></path>
+          </svg>
+        </span>
         <span class="bat-pct" id="bat-pct">--</span>
       </span>
     </div>
@@ -111,6 +115,10 @@
         <span id="lib-path"></span>
         <select id="lib-volumes" hidden></select>
       </div>
+      <div id="lib-pick-row" hidden>
+        <button id="lib-pick" class="btn">📂 选择其他文件夹…</button>
+        <span id="lib-pick-state"></span>
+      </div>
       <ul id="lib-dirs"></ul>
       <div id="lib-actions">
         <button id="lib-add" class="btn btn-primary">添加此文件夹</button>
@@ -126,6 +134,16 @@
       <div id="lib-preset">
         <button id="lib-preset-export" class="btn">导出当前元数据</button>
         <span id="lib-preset-state"></span>
+      </div>
+      <div id="lib-workdir-wrap" hidden>
+        <div class="lib-section">数据目录</div>
+        <div id="lib-workdir">
+          <div id="lib-workdir-path"></div>
+          <div id="lib-workdir-actions">
+            <button id="lib-workdir-change" class="btn">更改…</button>
+            <span id="lib-workdir-state"></span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -188,6 +206,7 @@
     </div>
   </div>
   <div id="hover-tip" hidden></div>
+  <div id="note-pop" hidden></div>
   <script type="module" src="app.js"></script>
 </body>
 </html>

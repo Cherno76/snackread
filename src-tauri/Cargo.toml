@@ -1,6 +1,6 @@
 [package]
 name = "snack-read"
-version = "0.5.63"
+version = "0.5.83"
 description = "cshow 的 GUI 版：条漫丝滑度实验"
 edition = "2021"
 
@@ -33,6 +33,23 @@ zhconv = "0.4.1"
 
 [dev-dependencies]
 sha2 = "0.10"
+
+# Xcode 27 的 SwiftPM 会把静态库里所有模块的 @_cdecl 导出符号内部化，而 swift-rs 1.0.8
+# 只把「本包自己的模块」恢复成全局符号；Tauri 的 SwiftRs 依赖模块（_string_from_bytes /
+# _retain_object / _release_object）仍是 local，Rust 链接就报 Undefined symbols。
+# vendor/swift-rs 是 1.0.8 的本地副本，只改了 globalize_cdecl_symbols：让它处理归档里的
+# 所有成员。上游修复后可以删掉这段 patch。
+[patch.crates-io]
+swift-rs = { path = "vendor/swift-rs" }
+
+# iOS 26/27 SDK 强制要求 UIScene 生命周期。tauri-runtime-wry 2.11.4 锁的是 tao 0.35
+# （^0.35.0），拿不到 0.36/0.37 的修复，所以本地带上 tao 0.35.3 的两个改动：
+#   1. f2163508 / 0.36.0 —— UISceneConfiguration 用 autorelease_ptr 返回，
+#      修掉 UIKit 在 _connectUISceneFromFBSScene 里 objc_retain 到已释放对象的闪退；
+#   2. a3ff3f03 / 0.37.0 —— 无条件注册 application:configurationForConnectingSceneSession:options:，
+#      否则 UIKit 判定「未采用 UIScene 生命周期」并在启动时直接终止。
+# tauri 升级到允许 tao 0.36+ 之后可以删掉这段 patch。
+tao = { path = "vendor/tao" }
 
 # 依赖库只保留行号级调试信息，大幅减小构建产物体积（应用自身仍是完整调试信息）
 [profile.dev.package."*"]
