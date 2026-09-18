@@ -27,8 +27,17 @@
     dark:  'rgba(255,200,40,.20)'
   };
 
-  var SERIF = 'Georgia, "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "Times New Roman", serif';
-  var SANS = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif';
+  // iOS 上 Songti SC / Kaiti SC 这些中文字体是「按需下载」的，WKWebView 里匹配不到，
+  // 实测（iOS 27 模拟器逐个渲染对比）会静默回退成 PingFang —— 所以「宋体」看着和「系统」
+  // 一模一样。能真正出衬线的预装字体是 Hiragino Mincho（日文明朝体，覆盖汉字），
+  // 所以 iOS 上把它排在前面；桌面端仍优先用 Songti SC / SimSun 这些中文宋体。
+  var IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  var SERIF = IS_IOS
+    ? '"Hiragino Mincho ProN", "Hiragino Mincho Pro", "Songti SC", Georgia, "Times New Roman", serif'
+    : 'Georgia, "Songti SC", "SimSun", "Noto Serif CJK SC", "Source Han Serif SC", "Times New Roman", serif';
+  var SANS = IS_IOS
+    ? '"PingFang SC", -apple-system, BlinkMacSystemFont, "Heiti SC", sans-serif'
+    : '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif';
 
   function parseSearch(s) {
     var o = {};
