@@ -979,7 +979,9 @@ function currentTextCol() {
 function scrollChapterIndex() {
   if (textBook && textChapterTop.length > 0) {
     // 虚拟化后 DOM 只有窗口内的占位 div，用高度前缀表二分定位
-    const top = stripEl.scrollTop + 8;
+    // （以前这里有个 +8 的偏移，#strip/.page 早就不存在 8px 间隙了，去掉——
+    //   它会让「滚动位置 → 章节内进度」在章节顶部算出非 0 的进度）
+    const top = stripEl.scrollTop;
     let lo = 0, hi = textChapterTop.length - 1;
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
@@ -1004,7 +1006,7 @@ function scrollChapterIndex() {
 function textScrollPosition() {
   const ch = scrollChapterIndex();
   if (textBook && textChapterTop.length > 0) {
-    const top = Math.max(0, stripEl.scrollTop + 8 - (textChapterTop[ch] || 0));
+    const top = Math.max(0, stripEl.scrollTop - (textChapterTop[ch] || 0));
     const h = textChapterHeights[ch] || 120;
     return { chapter: ch, frac: h > 0 ? Math.max(0, Math.min(1, top / h)) : 0 };
   }
@@ -1071,7 +1073,7 @@ function textProgress(flip) {
       // 虚拟化：用高度表计算章节内滚动进度
       const h = textChapterHeights[ch] || 120;
       const maxScroll = Math.max(1, h - stripEl.clientHeight);
-      within = Math.max(0, Math.min(1, (stripEl.scrollTop + 8 - (textChapterTop[ch] || 0)) / maxScroll));
+      within = Math.max(0, Math.min(1, (stripEl.scrollTop - (textChapterTop[ch] || 0)) / maxScroll));
     }
   }
   within = Math.max(0, Math.min(1, within));
@@ -1221,10 +1223,19 @@ async function buildTextFlip() {
       textPendingFrac = 0;
     }
   } else {
-    // 模式切换：从当前滚动位置捕获（章节 + 章节内进度），避免丢失阅读位置
-    const pos = textScrollPosition();
-    textPendingChapter = Math.min(pos.chapter, Math.max(0, n - 1));
-    textPendingFrac = pos.frac;
+    // 进入一本没有任何阅读记录的书（pendingVol 是对象但 page/progress 都是 null）：
+    // 从第一章第 0 页开始，**不要**沿用「当前滚动位置」——那时章节高度还是未测量的
+    // 占位值(120px)，一丁点滚动偏移会被放大成章节内几个百分点的进度，
+    // 按页数换算就是「新书一打开跳到第 4~5 页」。
+    if (pendingVol) {
+      textPendingChapter = 0;
+      textPendingFrac = 0;
+    } else {
+      // 用户手动切换模式：从当前滚动位置捕获（章节 + 章节内进度），避免丢失阅读位置
+      const pos = textScrollPosition();
+      textPendingChapter = Math.min(pos.chapter, Math.max(0, n - 1));
+      textPendingFrac = pos.frac;
+    }
   }
   pendingVol = null;
   // 先启动目标章 iframe 加载（与下方导航构建并行），几何通常会在构建期间就绪，
@@ -3131,6 +3142,9 @@ async function enterEpubStrip(savedPage, fresh) {
       }
     } catch { /* 无记录 */ }
   }
+  // 进入一本书时 pendingVol 一定要是对象（没有记录时字段为 null）：
+  // buildTextFlip 靠它区分「进入新书（从第 0 页开始）」和「用户手动切换阅读模式（沿用当前滚动位置）」
+  if (!pendingVol) pendingVol = { page: null, mode: null, progress: null };
   stripEntryPending = true; // 进入阅读：解包阶段显示顶部进度
   await ensureEpubStrip(en);
   stripEntryPending = false;
