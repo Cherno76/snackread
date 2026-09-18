@@ -2127,6 +2127,7 @@ const libPickStateEl = document.getElementById('lib-pick-state');
 // iPhone：顶部的 logo/时间/信号那一行（#titlebar）是多余的（系统状态栏已经有了），
 // 直接不显示，并把 --titlebar-h 归零让出那 34px。
 if (IS_IPHONE) document.body.classList.add('no-titlebar');
+if (IS_IPHONE) document.body.classList.add('iphone');
 if (IS_IOS_APP) {
   libPickRowEl.hidden = false;
   // iPhone 上不再用应用内浏览：隐藏「↑ 上级」+ 路径、目录列表和「添加此文件夹」，
@@ -4157,6 +4158,16 @@ const marginBottomEl = document.getElementById('margin-bottom');
 const marginLeftEl = document.getElementById('margin-left');
 const marginRightEl = document.getElementById('margin-right');
 const marginGapEl = document.getElementById('margin-gap');
+const marginFontEl = document.getElementById('margin-font');
+
+// iPhone 上「字体」按钮从控件行挪到了这个面板里，点击即循环切换并立即生效
+function refreshMarginFontLabel() {
+  marginFontEl.textContent = FONT_FAMILY_LABEL[readerFontFamily] || '系统';
+}
+marginFontEl.addEventListener('click', () => {
+  cycleFontFamily();
+  refreshMarginFontLabel();
+});
 
 function openMarginPanel() {
   marginTopEl.value = readerMargins.top;
@@ -4164,6 +4175,7 @@ function openMarginPanel() {
   marginLeftEl.value = readerMargins.left;
   marginRightEl.value = readerMargins.right;
   marginGapEl.value = readerMargins.gap;
+  refreshMarginFontLabel();
   marginBackdropEl.hidden = false;
   marginPanelEl.hidden = false;
 }

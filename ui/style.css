@@ -85,6 +85,8 @@ body {
    --titlebar-h 归零，让下面按它留出的 34px 一起收掉 */
 body.no-titlebar #titlebar { display: none; }
 body.no-titlebar { --titlebar-h: 0px; }
+/* iPhone：阅读控件行太挤，「字体」从控件行移到页边距面板里（#margin-font） */
+body.iphone #font-family { display: none !important; }
 #titlebar-text {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   max-width: 62%;
@@ -394,6 +396,8 @@ body.theme-dark { --reader-bg: #14171c; --reader-page: #14171c; }
 #mode-tab button, #page-mode button {
   background: none; border: none; color: var(--muted); cursor: pointer;
   padding: 6px 9px; display: flex; align-items: center; justify-content: center;
+  /* 标签一律不折行：空间不够时宁可让容器横向滚动，也不要把「目录」挤成两行 */
+  white-space: nowrap; flex: 0 0 auto;
 }
 #mode-tab button svg, #page-mode button svg { display: block; }
 #mode-tab button:hover, #page-mode button:hover { color: var(--text); }
@@ -499,6 +503,7 @@ body.theme-dark { --reader-bg: #14171c; --reader-page: #14171c; }
   border: 1px solid var(--border2); border-radius: var(--radius-s);
   background: var(--bg); color: var(--text);
 }
+.margin-row .btn { width: 84px; padding: 4px 6px; font-size: 14px; }
 #margin-save {
   width: 100%; margin-top: 12px; padding: 8px;
   background: var(--accent); color: #fff; border: none;
