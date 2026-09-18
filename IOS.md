@@ -132,6 +132,29 @@ iOS 的 `Data/Application/<UUID>` 这个 UUID **不是长期稳定的**：每次
 
 > 迁移之后 `cshow-work`（旧位置）会空掉；`presets.json` 仍留在 `Documents/`，方便用户拖文件。
 
+### 免费证书自动续期（scripts/ios-refresh.sh + launchd）
+
+免费个人 team 的 provisioning profile 只有 **7 天**有效期，到期后 App 直接打不开
+（证书本身是一年，卡的是 profile）。`scripts/ios-refresh.sh` 由
+`com.cherno.snackread-ios-refresh`（每小时一次）调用，在到期前 24 小时开始尝试：
+
+1. 实测：**Xcode 会复用仍在有效期内的 profile** —— 同一天连着构建十几次，profile 只有
+   一份、过期时间始终没变。所以脚本会先删掉 `~/Library/Developer/Xcode/UserData/
+   Provisioning Profiles/*.mobileprovision`（有备份，构建失败会放回），逼 Xcode 去 Apple
+   那边重新签发。
+2. 重新构建 + `devicectl install` 装回手机（覆盖安装，数据保留）。
+3. 读新 profile 的到期时间：真的往后延了就推送"已续期"，没变则推送说明"Apple 复用了
+   同一个 profile"。
+
+> 前置条件：手机在同一个 Wi-Fi 且处于 Xcode/Apple 能识别的可用状态（锁屏或离线会失败，
+> 下一个小时自动重试）；Mac 已登录 Xcode 的 Apple ID；登录钥匙串解锁（codesign 要私钥）。
+> 注意 `devicectl` 能连通 ≠ Xcode/Apple 愿意签发 profile：本机实测过
+> "Your team has no devices from which to generate a provisioning profile"。
+> 所以这套是**尽力而为**：最坏情况是过期后一小时内补齐，这一小时内 App 打不开。
+> 想要真正无断档只有 Apple Developer Program（$99/年，profile 一年有效）。
+
+手动操作：`scripts/ios-refresh.sh --status` 看到期时间；`--force` 强制跑一次（验证续期用）。
+
 ### 阅读模式隐藏系统状态栏（v0.5.78+）
 
 `Info.plist` 没设 `UIViewControllerBasedStatusBarAppearance`，默认 `YES`：系统状态栏由

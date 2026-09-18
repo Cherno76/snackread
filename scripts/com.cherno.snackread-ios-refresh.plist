@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  SnackRead iPhone 版自动续期（每小时探一次，平时立即退出）
+  安装：
+    cp scripts/com.cherno.snackread-ios-refresh.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.cherno.snackread-ios-refresh.plist
+  卸载：
+    launchctl bootout gui/$(id -u)/com.cherno.snackread-ios-refresh
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.cherno.snackread-ios-refresh</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/cherno/TUI-Project/cshow-android/scripts/ios-refresh.sh</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/cherno/Library/Logs/snackread-ios-refresh.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/cherno/Library/Logs/snackread-ios-refresh.err.log</string>
+</dict>
+</plist>
