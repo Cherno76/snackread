@@ -2120,6 +2120,8 @@ const libPickStateEl = document.getElementById('lib-pick-state');
 // iOS 沙盒：容器外的目录（iCloud Drive / 其他 App 的文件夹 / 外接存储）只能通过
 // 系统文件夹选择器授权后访问，所以这个入口只在 iOS 上出现。
 const IS_IOS_APP = /iPhone|iPad|iPod/.test(navigator.userAgent);
+// iPhone（不含 iPad）屏幕窄，文字书分两栏没法看，所以默认单页；iPad/桌面保持双页默认
+const IS_IPHONE = /iPhone|iPod/.test(navigator.userAgent);
 if (IS_IOS_APP) {
   libPickRowEl.hidden = false;
   // iPhone 上不再用应用内浏览：隐藏「↑ 上级」+ 路径、目录列表和「添加此文件夹」，
@@ -3585,8 +3587,8 @@ function loadFlipSettings() {
       // 文字书未设置时默认翻页模式；图片/PDF 书默认滚动
       flipOn = s.read_mode == null ? !!textBook : s.read_mode === 'flip';
       rtl = !!s.rtl;
-      // 文字书未设置时默认双页
-      doublePage = s.double_page == null ? !!textBook : !!s.double_page;
+      // 文字书未设置时默认双页；iPhone 屏幕窄，默认单页
+      doublePage = s.double_page == null ? (!!textBook && !IS_IPHONE) : !!s.double_page;
       // 单书字体/字号：读本书设置，未设置（null）则沿用全局默认
       if (textBook) {
         if (typeof s.font_size === 'number' && s.font_size >= 10 && s.font_size <= 32) readerFontSize = s.font_size;

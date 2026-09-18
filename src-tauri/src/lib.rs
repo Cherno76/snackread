@@ -2494,6 +2494,28 @@ fn repair_container_paths(conn: &rusqlite::Connection) {
 #[cfg(not(target_os = "ios"))]
 fn repair_container_paths(_conn: &rusqlite::Connection) {}
 
+/// 一次性迁移：iPhone 上文字书过去默认「双页」，而打开一本书就会把当时的默认值写进
+/// settings，所以老书会一直是双页。这里统一改成单页（用户之后可以按本再切回双页）。
+#[cfg(target_os = "ios")]
+fn migrate_ios_single_page(conn: &rusqlite::Connection) {
+    const KEY: &str = "ios_single_page_migrated";
+    if matches!(db::get_app_state(conn, KEY), Ok(Some(_))) {
+        return;
+    }
+    match conn.execute("UPDATE settings SET double_page = 0 WHERE double_page = 1", []) {
+        Ok(n) => {
+            if n > 0 {
+                log::info!("已把 {n} 本书的双页设置改为单页");
+            }
+            let _ = db::set_app_state(conn, KEY, "1");
+        }
+        Err(e) => log::warn!("单页迁移失败（下次启动重试）: {e}"),
+    }
+}
+
+#[cfg(not(target_os = "ios"))]
+fn migrate_ios_single_page(_conn: &rusqlite::Connection) {}
+
 /// 弹出系统「选择文件夹」选择器，返回被授权目录的绝对路径；用户取消返回 Err。
 /// iOS 以外平台走应用内浏览，不需要这个入口。
 #[cfg(target_os = "ios")]
@@ -6064,6 +6086,8 @@ pub fn run() {
     cleanup_orphan_caches(&conn, &work);
     // iOS：把库里指向旧 data container 的绝对路径改写回当前容器
     repair_container_paths(&conn);
+    // iOS：文字书默认单页（老书存着的「双页」一并改掉，只做一次）
+    migrate_ios_single_page(&conn);
     tauri::Builder::default()
         .manage(BookState(Mutex::new(None)))
         .manage(db::Db(Mutex::new(conn)))
